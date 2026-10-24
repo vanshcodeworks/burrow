@@ -6,7 +6,7 @@ Job Objects directly.
 ## Prerequisites
 
 - Windows 10 or 11, x86_64.
-- Rust stable through rustup. The workspace MSRV is 1.82.
+- Rust stable through rustup. The workspace MSRV is 1.85.
 - MSVC build tools and the Windows SDK. In the Visual Studio Build Tools
   installer, select "Desktop development with C++".
 

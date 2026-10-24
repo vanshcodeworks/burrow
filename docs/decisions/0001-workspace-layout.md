@@ -19,9 +19,10 @@ set of CI gates from the first commit.
    `burrow-testbin` binary target: a real child process for supervisor tests
    that is not a product crate and is never shipped.
 2. Use edition 2021 for every crate through workspace inheritance.
-3. Set the MSRV to 1.82. The `windows` 0.62.2 crate requires Rust 1.82; this was
+3. Set the MSRV to 1.85. The `windows` 0.62.2 crate requires Rust 1.82, but the
+   current `toml` 1.x release selected by Cargo requires Rust 1.85; this was
    verified against the crate metadata, and the root workspace declares
-   `rust-version = "1.82"`.
+   `rust-version = "1.85"`.
 4. Keep the supervisor Windows-only in M1. No cross-platform process
    abstraction is introduced until there is a concrete requirement for one; CI
    runs on `windows-latest`.

@@ -34,7 +34,7 @@ naming the milestone that will deliver it.
 ### Prerequisites
 
 - Windows 10 or 11, x86_64.
-- Rust stable through rustup (edition 2021, MSRV 1.82).
+- Rust stable through rustup (edition 2021, MSRV 1.85).
 - MSVC build tools with the Windows SDK. In the Visual Studio Build Tools
   installer, select "Desktop development with C++".
 
