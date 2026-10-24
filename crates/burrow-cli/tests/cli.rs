@@ -891,3 +891,82 @@ fn top_requires_an_interactive_terminal() {
     assert!(stderr(&output).contains("interactive terminal"));
     assert!(stderr(&output).contains("burrow status"));
 }
+
+#[test]
+fn snapshots_restore_data_atomically_and_reset_removes_it() {
+    let project = TestProject::new(
+        "[project]\nname = \"data\"\n\n[services.api]\nrun = 'cmd /C ping -n 30 127.0.0.1 > NUL'\n\n[services.worker]\nrun = 'cmd /C ping -n 30 127.0.0.1 > NUL'\n",
+    );
+    let data = project.path().join(".burrow").join("data");
+    fs::create_dir_all(data.join("api")).expect("create api data");
+    fs::write(data.join("api").join("record.txt"), "before\n").expect("write record");
+
+    let empty = run_in(project.path(), &["snapshots", "--json"]);
+    assert!(empty.status.success(), "{}", stderr(&empty));
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&stdout(&empty)).expect("json"),
+        serde_json::json!([])
+    );
+
+    let create = run_in(project.path(), &["snapshot", "before", "--json"]);
+    assert!(create.status.success(), "{}", stderr(&create));
+    let manifest: serde_json::Value =
+        serde_json::from_str(&stdout(&create)).expect("snapshot json");
+    assert_eq!(manifest["name"], "before");
+    assert_eq!(manifest["services"][0]["present"], true);
+    assert_eq!(manifest["services"][1]["present"], false);
+
+    fs::write(data.join("api").join("record.txt"), "after\n").expect("mutate");
+    fs::create_dir_all(data.join("worker")).expect("create worker data");
+
+    let restore = run_in(project.path(), &["restore", "before", "--json"]);
+    assert!(restore.status.success(), "{}", stderr(&restore));
+    assert_eq!(
+        fs::read_to_string(data.join("api").join("record.txt")).expect("read"),
+        "before\n"
+    );
+    assert!(
+        !data.join("worker").exists(),
+        "a directory absent at snapshot time must be removed"
+    );
+
+    let list = run_in(project.path(), &["snapshots", "--json"]);
+    assert!(list.status.success(), "{}", stderr(&list));
+    let listed: serde_json::Value = serde_json::from_str(&stdout(&list)).expect("json");
+    assert_eq!(listed[0]["name"], "before");
+
+    let duplicate = run_in(project.path(), &["snapshot", "before"]);
+    assert!(!duplicate.status.success());
+    assert!(stderr(&duplicate).contains("already exists"));
+
+    let invalid = run_in(project.path(), &["snapshot", "../escape"]);
+    assert!(!invalid.status.success());
+    assert!(stderr(&invalid).contains("invalid snapshot name"));
+
+    let reset = run_in(project.path(), &["reset", "api", "--json"]);
+    assert!(reset.status.success(), "{}", stderr(&reset));
+    assert!(!data.join("api").exists());
+
+    let unknown = run_in(project.path(), &["reset", "missing"]);
+    assert!(!unknown.status.success());
+    assert!(stderr(&unknown).contains("unknown service"));
+}
+
+#[test]
+fn data_commands_refuse_to_run_while_the_daemon_is_up() {
+    let config = format!(
+        "[project]\nname = \"busy\"\n\n[services.api]\n{}\n",
+        powershell_listener()
+    );
+    let project = TestProject::new(&config);
+    let up = run_in(project.path(), &["up", "--detach", "--yes"]);
+    assert!(up.status.success(), "up failed:\n{}", stderr(&up));
+    project.wait_until(Duration::from_secs(15), |state| {
+        state["ready"].as_bool() == Some(true)
+    });
+
+    let output = run_in(project.path(), &["snapshot", "busy"]);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("services are running"));
+    assert!(stderr(&output).contains("burrow down"));
+}
