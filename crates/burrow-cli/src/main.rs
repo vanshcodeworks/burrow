@@ -1,15 +1,20 @@
 //! `burrow` command-line interface.
-//!
-//! M1 provides the full command surface and a clean "not implemented" error
-//! for every command whose handler arrives in a later milestone. The CLI is
-//! synchronous in M1; async configuration loading and supervision arrive in
-//! M2.
 
 use std::ffi::OsString;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use anyhow::Result;
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
+use tracing_subscriber::EnvFilter;
+
+mod commandline;
+mod commands;
+mod control;
+mod daemon;
+mod project;
+mod state;
+mod win;
 
 /// Docker Compose's reproducibility, at a fraction of the resources, native on Windows.
 #[derive(Debug, Parser)]
@@ -19,17 +24,18 @@ struct Cli {
     #[arg(short, long, global = true, action = ArgAction::Count)]
     verbose: u8,
 
-    #[arg(long, global = true, help = "machine-readable output where supported")]
+    /// Machine-readable output where supported.
+    #[arg(long, global = true)]
     json: bool,
+
+    /// Project directory containing burrow.toml. Defaults to the current directory.
+    #[arg(long, global = true, value_name = "DIR")]
+    project: Option<PathBuf>,
 
     #[command(subcommand)]
     command: Command,
 }
 
-// The arguments are parsed now so `--help` documents the planned surface.
-// Their handlers arrive in later milestones; remove this allowance as each
-// command is implemented.
-#[allow(dead_code)]
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Scaffold a `burrow.toml` and a project layout.
@@ -57,7 +63,7 @@ enum Command {
     /// Stop all services for the current project.
     Down,
 
-    /// Restart one service.
+    /// Restart one service and its dependents.
     Restart {
         /// Service to restart.
         #[arg(value_name = "SERVICE")]
@@ -145,11 +151,16 @@ enum Command {
 
     /// Write the `burrow.toml` JSON Schema to stdout.
     Schema,
+
+    /// Internal: run the per-project daemon.
+    #[command(name = "__daemon", hide = true)]
+    Daemon {
+        /// Services to start.
+        #[arg(value_name = "SERVICE")]
+        services: Vec<String>,
+    },
 }
 
-// The names are parsed now so `--help` documents the planned surface. Remove
-// this allowance when the package commands are implemented in M3.
-#[allow(dead_code)]
 #[derive(Debug, Subcommand)]
 enum PkgCommand {
     /// List packages in the shared cache.
@@ -160,6 +171,14 @@ enum PkgCommand {
         /// Package name, optionally with a version (for example `postgres@16`).
         #[arg(value_name = "NAME")]
         name: String,
+
+        /// Service name to create in burrow.toml. Defaults to the package name.
+        #[arg(long, value_name = "NAME")]
+        service: Option<String>,
+
+        /// Seed script to run once after the service is first healthy.
+        #[arg(long, value_name = "PATH")]
+        seed: Option<PathBuf>,
     },
 
     /// Remove a package from this project.
@@ -188,52 +207,92 @@ enum EnvFormat {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    init_tracing(cli.verbose);
+    let options = commands::Options {
+        project: cli.project,
+        json: cli.json,
+    };
 
-    // Global flags are accepted in M1; their output modes are wired up with
-    // the first command handlers in later milestones.
-    let _global_options = (cli.verbose, cli.json);
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            eprintln!("error: could not start the async runtime: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
 
-    match run(cli.command) {
+    match runtime.block_on(run(cli.command, options)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("error: {error}");
+            eprintln!("error: {error:#}");
             ExitCode::FAILURE
         }
     }
 }
 
-fn run(command: Command) -> Result<()> {
+fn init_tracing(verbose: u8) {
+    let default = match verbose {
+        0 => "info",
+        1 => "debug",
+        _ => "trace",
+    };
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(format!("burrow={default},burrow::service=info,warn")));
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .with_writer(std::io::stderr)
+        .init();
+}
+
+async fn run(command: Command, options: commands::Options) -> Result<()> {
     match command {
         Command::Init { .. } => Err(not_implemented("init", "M5")),
-        Command::Up { .. } => Err(not_implemented("up", "M2")),
-        Command::Down => Err(not_implemented("down", "M2")),
-        Command::Restart { .. } => Err(not_implemented("restart", "M2")),
-        Command::Status => Err(not_implemented("status", "M2")),
-        Command::Logs { .. } => Err(not_implemented("logs", "M2")),
+        Command::Up {
+            services,
+            detach,
+            yes,
+        } => commands::up(&options, services, detach, yes).await,
+        Command::Down => commands::down(&options).await,
+        Command::Restart { service } => commands::restart(&options, service).await,
+        Command::Status => commands::status(&options).await,
+        Command::Logs {
+            service,
+            follow,
+            since,
+        } => commands::logs(&options, service, follow, since).await,
+        Command::Schema => commands::schema(),
+        Command::Daemon { services } => commands::daemon_entry(&options, services).await,
         Command::Open { .. } => Err(not_implemented("open", "M4")),
         Command::Env { .. } => Err(not_implemented("env", "M4")),
         Command::Exec { .. } => Err(not_implemented("exec", "M4")),
         Command::Doctor => Err(not_implemented("doctor", "M5")),
         Command::Top => Err(not_implemented("top", "M5")),
         Command::Pkg { command } => match command {
-            Some(command) => run_pkg(command),
-            None => Err(not_implemented("pkg", "M3")),
+            Some(command) => run_pkg(command, &options).await,
+            None => commands::pkg_list(&options),
         },
         Command::Snapshot { .. } => Err(not_implemented("snapshot", "M6")),
         Command::Restore { .. } => Err(not_implemented("restore", "M6")),
         Command::Snapshots => Err(not_implemented("snapshots", "M6")),
         Command::Reset { .. } => Err(not_implemented("reset", "M6")),
-        Command::Schema => Err(not_implemented("schema", "M5")),
     }
 }
 
-fn run_pkg(command: PkgCommand) -> Result<()> {
+async fn run_pkg(command: PkgCommand, options: &commands::Options) -> Result<()> {
     match command {
-        PkgCommand::List => Err(not_implemented("pkg list", "M3")),
-        PkgCommand::Add { .. } => Err(not_implemented("pkg add", "M3")),
-        PkgCommand::Remove { .. } => Err(not_implemented("pkg remove", "M3")),
-        PkgCommand::Gc => Err(not_implemented("pkg gc", "M3")),
-        PkgCommand::Verify => Err(not_implemented("pkg verify", "M3")),
+        PkgCommand::List => commands::pkg_list(options),
+        PkgCommand::Add {
+            name,
+            service,
+            seed,
+        } => commands::pkg_add(options, name, service, seed).await,
+        PkgCommand::Remove { name } => commands::pkg_remove(options, name).await,
+        PkgCommand::Gc => commands::pkg_gc(options),
+        PkgCommand::Verify => commands::pkg_verify(options),
     }
 }
 
