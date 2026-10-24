@@ -11,21 +11,26 @@ teardown, and a live dashboard.
 
 ## Status
 
-**M1 (foundation) — not usable end-to-end yet.** The repository contains the
-workspace, the complete CLI command surface, the CI pipeline, and the first
-supervisor primitives. `burrow --help` and `burrow --version` work. Every planned
-subcommand exits with code 1 and prints a clear "not implemented yet" message
-naming the milestone that will deliver it.
+**M1-M4 complete.** Burrow can load a validated `burrow.toml`, start services in
+dependency order as native Windows processes, manage verified package downloads,
+expose routed `*.localhost` URLs through a loopback proxy, and print or inject
+resolved environments. The TUI, `doctor`, `init`, snapshots, and the full user
+documentation are still being built (M5-M6).
 
 ## What works now
 
-- The Cargo workspace with the seven product crates from the design, plus a
-  test-only `burrow-testbin` binary target inside `burrow-supervisor`.
-- The `burrow` CLI skeleton. It parses and documents the full command surface,
-  including the global `-v/--verbose` and `--json` flags.
-- The Windows supervisor library: a child process runs inside a Job Object with a
-  memory cap, kill-on-close, and a graceful Ctrl+Break shutdown path.
-- Tests and checks: CLI integration tests, supervisor integration tests, and a
+- The seven-crate Cargo workspace plus a test-only `burrow-testbin` binary
+  target inside `burrow-supervisor`.
+- Strict configuration parsing, local overrides, template expansion, dependency
+  graphs, cycle reports, generated per-project secrets, and a JSON Schema.
+- A supervisor that runs each service in a Job Object with memory and CPU limits,
+  health-gated startup, restart backoff, a crash-loop breaker, and per-service
+  log files.
+- A content-addressed package cache with SHA-256 verification, resumable
+  downloads, hardened extraction, and one-time database initialization/seeding.
+- Stable per-project ports, a `*.localhost` reverse proxy with WebSocket
+  passthrough, and the `open`, `env`, and `exec` commands.
+- Tests and checks: unit and integration tests across the workspace and a
   `windows-latest` CI workflow that runs rustfmt, clippy, tests, and a release
   build.
 
@@ -57,49 +62,57 @@ cargo run -p burrow-supervisor --example supervise -- cmd /C echo hello
 
 ## Commands
 
-`burrow --help` and `burrow --version` work today. Every command in the table
-below is parsed but not implemented yet; it exits with code 1 and names its
-planned milestone.
+`burrow --help` and `burrow --version` work today. The lifecycle, package,
+environment, and networking commands below are implemented; the remaining
+commands exit with code 1 and name their planned milestone.
 
 | Command | Purpose | Status |
 | --- | --- | --- |
 | `burrow init [--template <name>]` | Scaffold `burrow.toml` and detect the stack | Not implemented (M5) |
-| `burrow up [service...] [--detach] [--yes]` | Start all or selected services | Not implemented (M2) |
-| `burrow down` | Stop everything for this project | Not implemented (M2) |
-| `burrow restart <service>` | Restart one service | Not implemented (M2) |
-| `burrow status` | Show service state and resource use | Not implemented (M2) |
-| `burrow logs [service] [-f] [--since <duration>]` | Print or follow service logs | Not implemented (M2) |
-| `burrow open [service]` | Open a routed URL in the browser | Not implemented (M4) |
-| `burrow env [--format dotenv\|json\|powershell]` | Print the resolved environment | Not implemented (M4) |
-| `burrow exec <service> -- <cmd>...` | Run a command with a service's environment | Not implemented (M4) |
+| `burrow up [service...] [--detach] [--yes]` | Start all or selected services | Implemented |
+| `burrow down` | Stop everything for this project | Implemented |
+| `burrow restart <service>` | Restart one service | Implemented |
+| `burrow status` | Show service state and resource use | Implemented |
+| `burrow logs [service] [-f] [--since <duration>]` | Print or follow service logs | Implemented |
+| `burrow open [service]` | Open a routed URL in the browser | Implemented |
+| `burrow env [service] [--format dotenv\|json\|powershell]` | Print endpoints, or one service's resolved environment | Implemented |
+| `burrow exec <service> -- <cmd>...` | Run a command with a service's environment | Implemented |
 | `burrow doctor` | Diagnose local environment problems | Not implemented (M5) |
 | `burrow top` | Open the terminal dashboard | Not implemented (M5) |
-| `burrow pkg list\|add\|remove\|gc\|verify` | Manage packages and the cache | Not implemented (M3) |
+| `burrow pkg list\|add\|remove\|gc\|verify` | Manage packages and the cache | Implemented |
 | `burrow snapshot <name>` | Snapshot a service's data | Not implemented (M6) |
 | `burrow restore <name>` | Restore a named snapshot | Not implemented (M6) |
 | `burrow snapshots` | List snapshots | Not implemented (M6) |
 | `burrow reset <service>` | Reset a service's data directory | Not implemented (M6) |
-| `burrow schema` | Emit the `burrow.toml` JSON Schema | Not implemented (M5) |
+| `burrow schema` | Emit the `burrow.toml` JSON Schema | Implemented |
 
 ## Safety and trust
 
 A checked-in `burrow.toml` can run arbitrary commands, just like a `Makefile` or
-`package.json` scripts. Burrow's planned behavior is to show every command and
-every download before the first start, require explicit confirmation, and
-re-prompt when those entries change. `--yes` is for CI; nothing is auto-approved
-silently.
+`package.json` scripts. Burrow shows every command and every download before the
+first start, requires explicit confirmation, and re-prompts when those entries
+change. Approval is keyed by a hash of the executable configuration; `--yes` is
+for CI. Nothing is auto-approved silently.
+
+Generated credentials live in `.burrow/secrets` and are excluded from normal
+logs and status output. `burrow env <service>` prints them only because that
+command exists to export a service environment.
+
+The reverse proxy binds `127.0.0.1` by default. A route is reachable from other
+machines only when its service sets `expose = true`, and Burrow prints a warning
+when that happens.
 
 Resource limits and process cleanup are operational safeguards, **not a security
 boundary**. Services run as your Windows user with the same filesystem and
 network access you have. See [`docs/architecture.md`](docs/architecture.md) for
-the M1 safety rules. The full security and trust-model document is planned for M6
+the safety rules. The full security and trust-model document is planned for M6
 and is tracked in [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Limitations
 
 - Windows 10/11 only. There is no Linux or macOS support.
-- M1 has no configuration parser and no working `up` or `down`; the environment
-  is not usable end-to-end yet.
+- The dashboard, `doctor`, `init`, and data snapshots are not implemented yet
+  (M5-M6).
 - Resource limits and process cleanup are not a security boundary and do not
   sandbox services.
 - Burrow is a local development tool, not a production deployment tool, and does

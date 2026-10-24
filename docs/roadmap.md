@@ -21,32 +21,32 @@ M1 is a foundation only. Burrow is not usable end-to-end until M2 ships.
 
 ## M2 - Config and graph
 
-- [ ] Parse and validate `burrow.toml`; merge `burrow.local.toml` overrides
-- [ ] Template variables such as `{{service.port}}` and generated passwords;
+- [x] Parse and validate `burrow.toml`; merge `burrow.local.toml` overrides
+- [x] Template variables such as `{{service.port}}` and generated passwords;
       unknown variables are errors
-- [ ] Dependency graph validation with the cycle path in the error
-- [ ] Start services in topological order, parallelizing independent branches
-- [ ] Health checks with configurable timeout, retries, and interval
-- [ ] Restart policy with exponential backoff and a crash-loop breaker
-- [ ] Per-service log capture, switching, and `burrow logs`
-- [ ] Commands: `up`, `down`, `restart`, `status`, `logs`
+- [x] Dependency graph validation with the cycle path in the error
+- [x] Start services in topological order, parallelizing independent branches
+- [x] Health checks with configurable timeout, retries, and interval
+- [x] Restart policy with exponential backoff and a crash-loop breaker
+- [x] Per-service log capture, switching, and `burrow logs`
+- [x] Commands: `up`, `down`, `restart`, `status`, `logs`
 
 ## M3 - Package manager
 
-- [ ] Registry TOML format, one definition file per service
-- [ ] SHA-256-verified, resumable downloads into a shared content-addressed cache
-- [ ] Hardened archive extraction that rejects zip-slip and path traversal
-- [ ] PostgreSQL registry entry with a verified upstream source and hash
-- [ ] Database initialization and one-time seeding
-- [ ] Commands: `pkg list`, `pkg add`, `pkg remove`, `pkg gc`, `pkg verify`
+- [x] Registry TOML format, one definition file per service
+- [x] SHA-256-verified, resumable downloads into a shared content-addressed cache
+- [x] Hardened archive extraction that rejects zip-slip and path traversal
+- [x] PostgreSQL registry entry with a verified upstream source and hash
+- [x] Database initialization and one-time seeding
+- [x] Commands: `pkg list`, `pkg add`, `pkg remove`, `pkg gc`, `pkg verify`
 
 ## M4 - Networking
 
-- [ ] Stable port allocation across restarts, with collision avoidance
-- [ ] Generated credentials stored in `.burrow/secrets` and never logged
-- [ ] Environment templating and URL generation
-- [ ] Loopback-only reverse proxy for `*.localhost` with WebSocket passthrough
-- [ ] Commands: `open`, `env`, `exec`
+- [x] Stable port allocation across restarts, with collision avoidance
+- [x] Generated credentials stored in `.burrow/secrets` and never logged
+- [x] Environment templating and URL generation
+- [x] Loopback-only reverse proxy for `*.localhost` with WebSocket passthrough
+- [x] Commands: `open`, `env`, `exec`
 
 ## M5 - Experience
 

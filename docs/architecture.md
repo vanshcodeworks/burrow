@@ -1,8 +1,8 @@
 # Architecture
 
-This document describes the M1 foundation: crate boundaries, the Windows
-supervisor design, and the safety rules later milestones must preserve. For
-current status, see [`roadmap.md`](roadmap.md).
+This document describes the crate boundaries, the Windows supervisor design,
+the package cache, and the networking and shell-environment layers. For current
+status, see [`roadmap.md`](roadmap.md).
 
 ## Workspace layout
 
@@ -72,29 +72,100 @@ the graceful path. The detailed rationale and known limitations are recorded in
 ### Log forwarding
 
 Child stdout and stderr are redirected through pipes. Tokio reader tasks drain
-both streams continuously and forward complete lines to `tracing` while the
-child runs, so a full pipe buffer cannot block the child. M1 provides the
-forwarding primitives; M2 adds per-service rotating files and the ring buffer
-used by the TUI.
+both streams continuously, forward complete lines to the per-service ring
+buffer, and append them to rotating files under `.burrow/logs/`, so a full pipe
+buffer cannot block the child.
+
+## Configuration, secrets, and trust (M2)
+
+`burrow-config` owns parsing, validation, local-override merging, dependency
+graphs, and template expansion. `burrow-cli` loads the result, generates one
+random password per service into `.burrow/secrets`, and expands
+`{{service.port}}`, `{{service.url}}`, `{{service.password}}`, and project
+variables before anything starts.
+
+The first `burrow up` prints every executable entry and requires confirmation.
+The approval is stored in `.burrow/trust.json` and keyed by
+`Config::executable_hash`, which covers `run` and `use` entries but not ports or
+memory limits. `--yes` performs the same approval non-interactively for CI.
+
+## Package cache (M3)
+
+`burrow-pkg` embeds `registry/*.toml` at compile time. Each entry pins the
+upstream URL, archive size, SHA-256, archive type, binary layout, run/stop
+commands, connection URL, and initialization steps. Downloads resume from a
+partial file, are hashed before use, and are extracted into a shared,
+content-addressed cache under `%LOCALAPPDATA%\burrow\cache` (or
+`BURROW_CACHE_DIR`).
+
+Archive extraction rejects absolute paths, `..` traversal, symlinks, duplicate
+or reserved names, and oversized entries. Initialization and seeding markers
+live inside each service's data directory, so seed scripts run exactly once per
+data directory even across restarts.
+
+## Networking and reverse proxy (M4)
+
+`burrow-net` remembers one port per project in `.burrow/ports.json`. Automatic
+ports are chosen from 40000-50000 and probed on `127.0.0.1` before reuse, so
+URLs stay stable but never collide with another running service. Fixed ports are
+validated as free. When the CLI needs values for a live daemon, it pins the
+ports recorded in `.burrow/state.json` instead of re-probing them.
+
+`burrow-net::proxy` is a hyper HTTP/1 proxy. It matches the `Host` header
+against `route` values, opens a fresh loopback connection to the service, copies
+the request, and streams the response back. For HTTP/1.1 upgrades (WebSocket) it
+forwards the upgrade handshake and then uses `copy_bidirectional` to tunnel
+frames in both directions.
+
+The listener prefers port 80 so `http://shop.localhost` needs no suffix, and
+falls back to a stable random port when 80 is unavailable. It binds
+`127.0.0.1` unless a routed service sets `expose = true`; even then, requests
+arriving from other machines are restricted to exposed routes. Burrow prints a
+warning whenever the proxy binds all interfaces.
+
+## Shell environment commands (M4)
+
+`burrow env` resolves ports without downloading packages. Without a service
+argument it prints project-level endpoint variables
+(`BURROW_<SERVICE>_URL`, `_HOST`, `_PORT`, and `_ROUTE_URL` when routed) in
+dotenv, JSON, or PowerShell form. With a service argument it prints that
+service's complete resolved environment.
+
+`burrow exec` resolves packages, then layers the service environment over the
+caller's environment and runs the command in the service working directory.
+Program names are resolved against the service `PATH` (which includes managed
+package `bin` directories) and `.cmd`/`.bat` shims are executed through
+`cmd.exe`. The child inherits the terminal, and its exit code becomes Burrow's
+exit code.
+
+`burrow open` reads live state, prefers the proxy route URL, and launches the
+default browser. Setting `BURROW_NO_BROWSER` makes it print the URL instead,
+which is useful in tests and remote shells.
 
 ## Safety rules
 
-- Product `unsafe` is confined to `crates/burrow-supervisor/src/win.rs`.
+- Product `unsafe` is confined to each crate's private `win` module
+  (`burrow-supervisor` and `burrow-cli`). No other module contains `unsafe`.
 - Every `unsafe` block carries a `// SAFETY:` comment that explains why its
   preconditions hold.
-- Win32 handles are owned by wrappers in the `win` module and cannot escape as
+- Win32 handles are owned by wrappers in the `win` modules and cannot escape as
   raw handles through the safe public API.
 - Public functions validate inputs and translate Win32 failures into errors;
   expected failure paths do not panic.
-- No other product module uses `unsafe`. The supervisor's test-only support
-  module uses a few Win32 query calls to inspect process liveness and job
-  membership from the outside; those calls carry SAFETY comments too. This is a
-  review-enforced rule, backed by clippy with `-D warnings` in CI.
+- The supervisor's test-only support module uses a few Win32 query calls to
+  inspect process liveness and job membership from the outside; those calls
+  carry SAFETY comments too. This is a review-enforced rule, backed by clippy
+  with `-D warnings` in CI.
+- Generated secrets are written to `.burrow/secrets` with restrictive handling
+  and are excluded from logs, status tables, and command summaries.
+- Network listeners bind loopback by default. Remote proxy access requires an
+  explicit per-service `expose = true` and is limited to those routes.
 
 ## Testing strategy
 
 - Unit tests cover pure logic: configuration validation, dependency ordering,
-  port allocation, and extraction path checks as those modules land.
+  port allocation, proxy host routing and upgrade tunneling, and extraction path
+  checks.
 - CLI integration tests spawn the built `burrow` binary with
   `std::process::Command` and assert exit codes and stderr.
 - Windows supervisor integration tests spawn real children through
