@@ -245,6 +245,7 @@ mod tests {
             pid: 42,
             token: "secret-token".to_owned(),
             control_port: 45000,
+            proxy_port: None,
             started_at: 1,
             config_hash: "hash".to_owned(),
             ready: true,

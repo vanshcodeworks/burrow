@@ -1,6 +1,11 @@
 //! Implementations of the CLI commands that exist in M2.
+//!
+//! Commands never print secrets except through the explicit `burrow env`
+//! output, and every path that starts a long-running process keeps its
+//! standard handles out of the daemon.
 
 use std::collections::BTreeMap;
+use std::ffi::{OsStr, OsString};
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -8,12 +13,14 @@ use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use burrow_pkg::{Cache, DownloadProgress, Registry};
+use clap::ValueEnum;
 use toml_edit::{DocumentMut, Item, Table};
 
 use crate::control::{self, ControlCommand, LogEntry};
 use crate::daemon;
 use crate::project::{self, Project};
 use crate::state::{format_bytes, format_uptime, unix_now, RuntimeState, ServiceStatus};
+use crate::win;
 
 /// Global options shared by commands.
 #[derive(Debug, Clone, Default)]
@@ -24,10 +31,47 @@ pub struct Options {
     pub json: bool,
 }
 
+/// Output formats for `burrow env`.
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum EnvFormat {
+    /// `KEY=value` lines suitable for dotenv files.
+    Dotenv,
+    /// A JSON object of environment variables.
+    Json,
+    /// PowerShell `$env:KEY = 'value'` assignments.
+    Powershell,
+}
+
+/// The exit status of a child started by `burrow exec`.
+///
+/// `main` recognizes this type and exits with the child's own code, so scripts
+/// and CI pipelines see the real result instead of a generic failure.
+#[derive(Debug)]
+pub struct ExitStatusError(pub i32);
+
+impl std::fmt::Display for ExitStatusError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "the command exited with code {}", self.0)
+    }
+}
+
+impl std::error::Error for ExitStatusError {}
+
 /// Implements `burrow up`.
 pub async fn up(options: &Options, services: Vec<String>, detach: bool, yes: bool) -> Result<()> {
     let project = Project::load(options.project.clone())?;
     project::ensure_trust(&project, yes)?;
+
+    for (name, service) in &project.config.services {
+        if service.expose {
+            eprintln!(
+                "warning: service `{name}` sets expose = true; it may accept connections from other machines"
+            );
+            eprintln!(
+                "  note: Burrow does not change how your command binds. Make sure it listens only on networks you trust."
+            );
+        }
+    }
 
     if let Some(state) = control::load_live_state(&project.dir).await? {
         if state.ready {
@@ -151,7 +195,8 @@ async fn detach_daemon(project: &Project, services: &[String], json: bool) -> Re
                         state.project
                     );
                     for (name, service) in &state.services {
-                        println!("  {name:<16} {}  {}", service.status.label(), service.url);
+                        let url = service.route_url.as_deref().unwrap_or(&service.url);
+                        println!("  {name:<16} {}  {}", service.status.label(), url);
                     }
                     println!();
                     println!("  logs:   burrow logs -f");
@@ -357,7 +402,10 @@ fn print_status_table(state: &RuntimeState) {
             ram,
             cpu,
             uptime,
-            service.url.clone(),
+            service
+                .route_url
+                .clone()
+                .unwrap_or_else(|| service.url.clone()),
         ]);
     }
 
@@ -625,6 +673,210 @@ async fn live_state(project: &Project) -> Result<RuntimeState> {
         "Burrow is not running for this project\n\
          help: run `burrow up --detach` first"
     )
+}
+
+/// Implements `burrow env`.
+///
+/// Without a service this prints the project's endpoint variables, which is the
+/// form other tools usually consume. Naming a service prints its complete
+/// resolved environment instead. Package resolution is planned but never
+/// downloaded: printing variables must not fetch a 350 MB database.
+pub async fn env(options: &Options, service: Option<String>, format: EnvFormat) -> Result<()> {
+    let project = Project::load(options.project.clone())?;
+    let selected = service.iter().cloned().collect::<Vec<_>>();
+    let resolved = project::resolve_for_shell(&project, &selected, false).await?;
+
+    let variables = match &service {
+        Some(name) => {
+            let plan = resolved
+                .services
+                .get(name)
+                .with_context(|| format!("service `{name}` was not resolved; check burrow.toml"))?;
+            plan.env
+                .iter()
+                .map(|(key, value)| {
+                    (
+                        key.to_string_lossy().into_owned(),
+                        value.to_string_lossy().into_owned(),
+                    )
+                })
+                .collect()
+        }
+        None => {
+            let mut variables = BTreeMap::new();
+            variables.insert(
+                "BURROW_PROJECT".to_owned(),
+                project.config.project.name.clone(),
+            );
+            variables.insert(
+                "BURROW_PROJECT_DIR".to_owned(),
+                project.dir.to_string_lossy().into_owned(),
+            );
+            for (name, plan) in &resolved.services {
+                let key = env_key(name);
+                variables.insert(format!("BURROW_{key}_HOST"), "127.0.0.1".to_owned());
+                variables.insert(format!("BURROW_{key}_PORT"), plan.port.to_string());
+                variables.insert(format!("BURROW_{key}_URL"), plan.url.clone());
+                if let (Some(route), Some(port)) = (&plan.route, resolved.proxy_port) {
+                    variables.insert(
+                        format!("BURROW_{key}_ROUTE_URL"),
+                        burrow_net::proxy::url_for(route, port),
+                    );
+                }
+            }
+            variables
+        }
+    };
+
+    write_environment(&variables, format)
+}
+
+fn env_key(name: &str) -> String {
+    name.chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn write_environment(variables: &BTreeMap<String, String>, format: EnvFormat) -> Result<()> {
+    let stdout = std::io::stdout();
+    let mut output = std::io::BufWriter::new(stdout.lock());
+    match format {
+        EnvFormat::Dotenv => {
+            for (key, value) in variables {
+                writeln!(output, "{key}={}", dotenv_value(value))?;
+            }
+        }
+        EnvFormat::Json => {
+            serde_json::to_writer_pretty(&mut output, variables)?;
+            writeln!(output)?;
+        }
+        EnvFormat::Powershell => {
+            for (key, value) in variables {
+                writeln!(output, "$env:{key} = '{}'", value.replace('\'', "''"))?;
+            }
+        }
+    }
+    output.flush()?;
+    Ok(())
+}
+
+/// Quotes a dotenv value only when it would otherwise change meaning.
+fn dotenv_value(value: &str) -> String {
+    let safe = !value.is_empty()
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "_-.\\/:@+".contains(character));
+    if safe {
+        return value.to_owned();
+    }
+    let escaped = value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\r', "\\r")
+        .replace('\n', "\\n");
+    format!("\"{escaped}\"")
+}
+
+/// Implements `burrow exec`.
+///
+/// The child inherits Burrow's standard handles and environment, with the
+/// service's resolved variables layered on top. Its exit code is preserved.
+pub async fn exec(options: &Options, service: String, command: Vec<OsString>) -> Result<()> {
+    let Some((program, arguments)) = command.split_first() else {
+        bail!("burrow exec needs a command, for example `burrow exec web -- node --version`");
+    };
+    let project = Project::load(options.project.clone())?;
+    let resolved =
+        project::resolve_for_shell(&project, std::slice::from_ref(&service), true).await?;
+    let plan = resolved
+        .services
+        .get(&service)
+        .with_context(|| format!("service `{service}` was not resolved; check burrow.toml"))?;
+
+    // A managed package prepends its bin directories to PATH, so resolve
+    // against the service environment before falling back to Burrow's own.
+    let search_path = plan
+        .env
+        .get(OsStr::new("PATH"))
+        .cloned()
+        .or_else(|| std::env::var_os("PATH"));
+    let program = win::resolve_executable(program, &plan.cwd, search_path.as_deref())
+        .with_context(|| format!("could not resolve `{}`", program.to_string_lossy()))?;
+
+    let status = std::process::Command::new(&program)
+        .args(arguments)
+        .current_dir(&plan.cwd)
+        .envs(&plan.env)
+        .status()
+        .with_context(|| format!("could not run {}", program.display()))?;
+    if !status.success() {
+        return Err(ExitStatusError(status.code().unwrap_or(1)).into());
+    }
+    Ok(())
+}
+
+/// Implements `burrow open`.
+pub async fn open(options: &Options, service: Option<String>) -> Result<()> {
+    let project = Project::load(options.project.clone())?;
+    let state = live_state(&project).await?;
+    let (name, url) = choose_open_url(&state, service.as_deref())?;
+
+    if std::env::var_os("BURROW_NO_BROWSER").is_some() {
+        println!("{url}");
+        return Ok(());
+    }
+
+    eprintln!("opening {url} ({name})");
+    win::open_url(&url).with_context(|| format!("could not open {url}"))?;
+    Ok(())
+}
+
+fn choose_open_url(state: &RuntimeState, service: Option<&str>) -> Result<(String, String)> {
+    match service {
+        Some(name) => {
+            let snapshot = state.services.get(name).with_context(|| {
+                let known = state
+                    .services
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("service `{name}` is not running (running services: {known})")
+            })?;
+            let url = snapshot
+                .route_url
+                .clone()
+                .or_else(|| {
+                    if snapshot.url.starts_with("http://") || snapshot.url.starts_with("https://") {
+                        Some(snapshot.url.clone())
+                    } else {
+                        None
+                    }
+                })
+                .with_context(|| {
+                    format!(
+                        "service `{name}` has no browser URL; add a `route` to it in burrow.toml \
+                         (its endpoint is {})",
+                        snapshot.url
+                    )
+                })?;
+            Ok((name.to_owned(), url))
+        }
+        None => state
+            .services
+            .iter()
+            .find_map(|(name, snapshot)| snapshot.route_url.clone().map(|url| (name.clone(), url)))
+            .with_context(|| {
+                "no service has a route\n\
+                 help: add `route = \"app.localhost\"` to a web service in burrow.toml"
+            }),
+    }
 }
 
 /// Implements `burrow schema`.

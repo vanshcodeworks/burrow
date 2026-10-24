@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use anyhow::Result;
-use clap::{ArgAction, Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
 mod commandline;
@@ -97,9 +97,14 @@ enum Command {
 
     /// Print the resolved environment for the project.
     Env {
+        /// Service whose complete environment should be printed. Without a
+        /// service, prints the project's endpoint variables.
+        #[arg(value_name = "SERVICE")]
+        service: Option<String>,
+
         /// Output format.
         #[arg(long, value_enum, default_value = "dotenv", value_name = "FORMAT")]
-        format: EnvFormat,
+        format: commands::EnvFormat,
     },
 
     /// Run a command with a service's resolved environment.
@@ -195,16 +200,6 @@ enum PkgCommand {
     Verify,
 }
 
-#[derive(Clone, Copy, Debug, ValueEnum)]
-enum EnvFormat {
-    /// `KEY=value` lines suitable for dotenv files.
-    Dotenv,
-    /// A JSON object of environment variables.
-    Json,
-    /// PowerShell `$env:KEY = 'value'` assignments.
-    Powershell,
-}
-
 fn main() -> ExitCode {
     let cli = Cli::parse();
     init_tracing(cli.verbose);
@@ -227,6 +222,11 @@ fn main() -> ExitCode {
     match runtime.block_on(run(cli.command, options)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
+            if let Some(exit) = error.downcast_ref::<commands::ExitStatusError>() {
+                // Preserve the child's exact status for scripts and CI. Using
+                // `exit` here is safe: the runtime has already finished.
+                std::process::exit(exit.0);
+            }
             eprintln!("error: {error:#}");
             ExitCode::FAILURE
         }
@@ -266,9 +266,9 @@ async fn run(command: Command, options: commands::Options) -> Result<()> {
         } => commands::logs(&options, service, follow, since).await,
         Command::Schema => commands::schema(),
         Command::Daemon { services } => commands::daemon_entry(&options, services).await,
-        Command::Open { .. } => Err(not_implemented("open", "M4")),
-        Command::Env { .. } => Err(not_implemented("env", "M4")),
-        Command::Exec { .. } => Err(not_implemented("exec", "M4")),
+        Command::Open { service } => commands::open(&options, service).await,
+        Command::Env { service, format } => commands::env(&options, service, format).await,
+        Command::Exec { service, cmd } => commands::exec(&options, service, cmd).await,
         Command::Doctor => Err(not_implemented("doctor", "M5")),
         Command::Top => Err(not_implemented("top", "M5")),
         Command::Pkg { command } => match command {

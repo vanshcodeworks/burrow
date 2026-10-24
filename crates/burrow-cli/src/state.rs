@@ -60,6 +60,9 @@ pub struct ServiceSnapshot {
     pub url: String,
     /// Reverse-proxy hostname, when configured.
     pub route: Option<String>,
+    /// Full browser URL for the route, when the proxy is running.
+    #[serde(default)]
+    pub route_url: Option<String>,
     /// Number of automatic restarts since the daemon started.
     pub restarts: u32,
     /// Unix seconds when the current process started.
@@ -89,6 +92,9 @@ pub struct RuntimeState {
     pub token: String,
     /// Loopback control port.
     pub control_port: u16,
+    /// Port of the reverse proxy, when the project has routed services.
+    #[serde(default)]
+    pub proxy_port: Option<u16>,
     /// Unix seconds when the daemon started.
     pub started_at: u64,
     /// Hash of the approved executable configuration.
@@ -153,6 +159,7 @@ impl RuntimeState {
             "project_dir": self.project_dir,
             "pid": self.pid,
             "control_port": self.control_port,
+            "proxy_port": self.proxy_port,
             "started_at": self.started_at,
             "config_hash": self.config_hash,
             "ready": self.ready,

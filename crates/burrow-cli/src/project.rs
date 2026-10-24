@@ -124,6 +124,8 @@ pub struct ServicePlan {
     pub url: String,
     /// Reverse-proxy hostname.
     pub route: Option<String>,
+    /// Whether the service explicitly opted into non-loopback access.
+    pub expose: bool,
     /// Health check, if configured.
     pub health: Option<HealthSettings>,
     /// Restart policy.
@@ -200,6 +202,26 @@ pub struct ResolvedProject {
     pub services: BTreeMap<String, ServicePlan>,
     /// Layered startup plan restricted to selected services and dependencies.
     pub startup: StartupPlan,
+    /// Port reserved for the reverse proxy, when at least one route exists.
+    pub proxy_port: Option<u16>,
+}
+
+/// Port key used for the shared reverse proxy in `.burrow/ports.json`.
+pub const PROXY_PORT_KEY: &str = "__proxy__";
+/// Preferred proxy port. Port 80 is legal for unprivileged Windows users and
+/// keeps `http://shop.localhost` free of a port suffix.
+pub const DEFAULT_PROXY_PORT: u16 = 80;
+
+fn allocate_proxy_port(allocator: &mut PortAllocator) -> Result<u16> {
+    if let Some(port) = allocator.pinned(PROXY_PORT_KEY) {
+        return Ok(port);
+    }
+    match allocator.allocate(PROXY_PORT_KEY, Some(DEFAULT_PROXY_PORT)) {
+        Ok(port) => Ok(port),
+        Err(_) => allocator
+            .allocate(PROXY_PORT_KEY, None)
+            .context("could not reserve a port for the reverse proxy"),
+    }
 }
 
 /// Loads or generates the per-project secret for every service.
@@ -360,7 +382,7 @@ pub async fn warm_packages(
     selected: &[String],
     on_progress: &mut dyn FnMut(&str, DownloadProgress),
 ) -> Result<()> {
-    install_packages(project, selected, on_progress).await?;
+    install_packages(project, selected, on_progress, true).await?;
     record_package_refs(project)?;
     Ok(())
 }
@@ -387,6 +409,7 @@ async fn install_packages(
     project: &Project,
     selected: &[String],
     on_progress: &mut dyn FnMut(&str, DownloadProgress),
+    install: bool,
 ) -> Result<BTreeMap<String, InstalledPackage>> {
     let startup = project
         .config
@@ -404,10 +427,16 @@ async fn install_packages(
         let resolved = registry
             .resolve(reference)
             .map_err(|error| anyhow::anyhow!("service `{name}` uses `{reference}`: {error}"))?;
-        let root = cache
-            .ensure(&resolved, &mut |progress| on_progress(name, progress))
-            .await
-            .map_err(|error| anyhow::anyhow!("service `{name}`: {error}"))?;
+        let root = if install {
+            cache
+                .ensure(&resolved, &mut |progress| on_progress(name, progress))
+                .await
+                .map_err(|error| anyhow::anyhow!("service `{name}`: {error}"))?
+        } else {
+            // `burrow env` only needs the planned command and URL. It must not
+            // download a multi-hundred-megabyte package to print variables.
+            cache.package_dir(&resolved.platform.sha256)
+        };
         let run = resolved.version.run.clone().ok_or_else(|| {
             anyhow::anyhow!(
                 "registry entry `{}` has no run command for Windows",
@@ -467,18 +496,59 @@ pub async fn resolve(
     selected: &[String],
     allocator: &mut PortAllocator,
 ) -> Result<ResolvedProject> {
+    resolve_inner(project, selected, allocator, true).await
+}
+
+/// Resolves a project for a shell command, preserving the ports of a running
+/// daemon.
+///
+/// Probing ports would report a different value while the real services are
+/// listening, so live assignments are pinned from `.burrow/state.json`. Pass
+/// `install = false` to plan package commands without downloading them.
+pub async fn resolve_for_shell(
+    project: &Project,
+    selected: &[String],
+    install: bool,
+) -> Result<ResolvedProject> {
+    let mut allocator = project.ports()?;
+    if let Some(state) = crate::control::load_live_state(&project.dir).await? {
+        for (name, snapshot) in &state.services {
+            allocator.pin(name, snapshot.port);
+        }
+        if let Some(port) = state.proxy_port {
+            allocator.pin(PROXY_PORT_KEY, port);
+        }
+    }
+    let resolved = resolve_inner(project, selected, &mut allocator, install).await?;
+    allocator.save()?;
+    Ok(resolved)
+}
+
+async fn resolve_inner(
+    project: &Project,
+    selected: &[String],
+    allocator: &mut PortAllocator,
+    install: bool,
+) -> Result<ResolvedProject> {
     let secrets = load_or_create_secrets(project)?;
     let mut config = project.config.clone();
     let startup = config
         .startup_plan(selected)
         .map_err(|error| anyhow::anyhow!("{error}"))?;
 
-    let installed = install_packages(project, selected, &mut |name, progress| {
-        let percent = progress.downloaded.saturating_mul(100) / progress.total.max(1);
-        tracing::info!(service = %name, percent, "preparing package");
-    })
+    let installed = install_packages(
+        project,
+        selected,
+        &mut |name, progress| {
+            let percent = progress.downloaded.saturating_mul(100) / progress.total.max(1);
+            tracing::info!(service = %name, percent, "preparing package");
+        },
+        install,
+    )
     .await?;
-    record_package_refs(project)?;
+    if install {
+        record_package_refs(project)?;
+    }
 
     // Allocate every service, not only the selected ones: a later
     // `burrow up <service>` must reuse the same port.
@@ -489,6 +559,15 @@ pub async fn resolve(
             .with_context(|| format!("could not assign a port to `{name}`"))?;
         ports.insert(name.clone(), port);
     }
+    let proxy_port = if startup
+        .included
+        .iter()
+        .any(|name| config.services[name].route.is_some())
+    {
+        Some(allocate_proxy_port(allocator)?)
+    } else {
+        None
+    };
 
     let mut variables = BTreeMap::new();
     for (name, port) in &ports {
@@ -522,11 +601,23 @@ pub async fn resolve(
         let port = ports[name];
         services.insert(
             name.clone(),
-            build_service(project, name, service, port, installed.get(name), &secrets)?,
+            build_service(
+                project,
+                name,
+                service,
+                port,
+                installed.get(name),
+                &secrets,
+                install,
+            )?,
         );
     }
 
-    Ok(ResolvedProject { services, startup })
+    Ok(ResolvedProject {
+        services,
+        startup,
+        proxy_port,
+    })
 }
 
 fn package_vars(
@@ -594,6 +685,7 @@ fn prepare_command(
     command: &TemplateCommand,
     vars: &BTreeMap<&'static str, String>,
     password: Option<&str>,
+    require_binary: bool,
 ) -> Result<PreparedCommand> {
     let relative = package.binaries.get(&command.program).ok_or_else(|| {
         anyhow::anyhow!(
@@ -605,7 +697,7 @@ fn prepare_command(
     let program = package
         .root
         .join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
-    if !program.is_file() {
+    if require_binary && !program.is_file() {
         bail!(
             "package `{}` is missing binary `{}` at {}; run `burrow pkg verify`",
             package.key,
@@ -646,6 +738,7 @@ fn build_package_plan(
     port: u16,
     package: &InstalledPackage,
     secrets: &BTreeMap<String, String>,
+    require_binaries: bool,
 ) -> Result<PackagePlan> {
     let password = secrets.get(service_name).map(String::as_str);
     let data_dir = project.data_dir(service_name);
@@ -653,7 +746,13 @@ fn build_package_plan(
 
     let mut init = Vec::with_capacity(package.init.len());
     for step in &package.init {
-        init.push(prepare_command(package, &step.command, &vars, password)?);
+        init.push(prepare_command(
+            package,
+            &step.command,
+            &vars,
+            password,
+            require_binaries,
+        )?);
     }
 
     let (seed, seed_file, seed_sha256) =
@@ -668,7 +767,7 @@ fn build_package_plan(
             vars.insert("seed_file", path.to_string_lossy().into_owned());
             let hash = burrow_data::hash_file(&path)
                 .map_err(|error| anyhow::anyhow!("service `{service_name}`: {error}"))?;
-            let prepared = prepare_command(package, command, &vars, password)?;
+            let prepared = prepare_command(package, command, &vars, password, require_binaries)?;
             (Some(prepared), Some(path), Some(hash))
         } else {
             if service.seed.is_some() && package.seed.is_none() {
@@ -685,7 +784,7 @@ fn build_package_plan(
     let stop = package
         .stop
         .as_ref()
-        .map(|command| prepare_command(package, command, &stop_vars, password))
+        .map(|command| prepare_command(package, command, &stop_vars, password, require_binaries))
         .transpose()?;
 
     Ok(PackagePlan {
@@ -729,6 +828,7 @@ fn build_service(
     port: u16,
     package: Option<&InstalledPackage>,
     secrets: &BTreeMap<String, String>,
+    require_binaries: bool,
 ) -> Result<ServicePlan> {
     let cwd = match &service.cwd {
         Some(cwd) => {
@@ -788,7 +888,17 @@ fn build_service(
 
     let password = secrets.get(name).map(String::as_str);
     let package_plan = package
-        .map(|package| build_package_plan(project, name, service, port, package, secrets))
+        .map(|package| {
+            build_package_plan(
+                project,
+                name,
+                service,
+                port,
+                package,
+                secrets,
+                require_binaries,
+            )
+        })
         .transpose()?;
 
     let (program, args, command_display) = if let Some(command) = &service.run {
@@ -801,7 +911,7 @@ fn build_service(
         )
     } else if let Some(package) = package {
         let vars = package_vars(project, name, port, password, None);
-        let run = prepare_command(package, &package.run, &vars, password)?;
+        let run = prepare_command(package, &package.run, &vars, password, require_binaries)?;
         (run.program, run.args, run.display)
     } else {
         bail!("service `{name}` has neither `run` nor `use`");
@@ -883,6 +993,7 @@ fn build_service(
         port,
         url,
         route: service.route.clone(),
+        expose: service.expose,
         health,
         restart: service.restart,
         command_display,

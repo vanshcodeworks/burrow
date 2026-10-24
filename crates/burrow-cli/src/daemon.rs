@@ -58,6 +58,7 @@ struct Daemon {
     slots: BTreeMap<String, Slot>,
     token: String,
     control_port: u16,
+    proxy: Option<burrow_net::proxy::ProxyHandle>,
     started_at: u64,
     ready: bool,
     last_state_write: Instant,
@@ -107,6 +108,48 @@ pub async fn run(project: Project, selected: Vec<String>) -> Result<()> {
 
     let resolved = project::resolve(&project, &selected, &mut allocator).await?;
     allocator.save()?;
+
+    let routes = resolved
+        .services
+        .values()
+        .filter_map(|plan| {
+            plan.route.as_ref().map(|route| {
+                (
+                    route.clone(),
+                    burrow_net::proxy::Route {
+                        port: plan.port,
+                        expose: plan.expose,
+                    },
+                )
+            })
+        })
+        .collect::<BTreeMap<_, _>>();
+    let expose_proxy = resolved
+        .services
+        .values()
+        .any(|plan| plan.route.is_some() && plan.expose);
+    let proxy = match (resolved.proxy_port, routes.is_empty()) {
+        (Some(port), false) => {
+            if expose_proxy {
+                warn!(
+                    port,
+                    "expose = true: the reverse proxy is bound to all interfaces; \
+                     anything that can reach this machine can reach its routes"
+                );
+            }
+            let handle = burrow_net::proxy::start(routes, expose_proxy, port)
+                .await
+                .with_context(|| format!("could not bind the reverse proxy on 127.0.0.1:{port}"))?;
+            info!(
+                port = handle.port(),
+                exposed = handle.exposed(),
+                "reverse proxy ready"
+            );
+            Some(handle)
+        }
+        _ => None,
+    };
+
     std::fs::create_dir_all(project.logs_dir())
         .with_context(|| format!("could not create {}", project.logs_dir().display()))?;
 
@@ -146,6 +189,7 @@ pub async fn run(project: Project, selected: Vec<String>) -> Result<()> {
         slots,
         token,
         control_port,
+        proxy,
         started_at,
         ready: false,
         last_state_write: Instant::now(),
@@ -857,10 +901,17 @@ impl Daemon {
     }
 
     fn snapshot(&self) -> RuntimeState {
+        let proxy_port = self
+            .proxy
+            .as_ref()
+            .map(burrow_net::proxy::ProxyHandle::port);
         let services = self
             .slots
             .iter()
             .map(|(name, slot)| {
+                let route_url = slot.plan.route.as_ref().and_then(|route| {
+                    proxy_port.map(|port| burrow_net::proxy::url_for(route, port))
+                });
                 (
                     name.clone(),
                     ServiceSnapshot {
@@ -869,6 +920,7 @@ impl Daemon {
                         port: slot.plan.port,
                         url: slot.plan.url.clone(),
                         route: slot.plan.route.clone(),
+                        route_url,
                         restarts: slot.restarts,
                         started_at: slot.started_wall,
                         exit_code: slot.exit_code,
@@ -887,6 +939,7 @@ impl Daemon {
             pid: std::process::id(),
             token: self.token.clone(),
             control_port: self.control_port,
+            proxy_port,
             started_at: self.started_at,
             config_hash: self.project.config_hash.clone(),
             ready: self.ready,
