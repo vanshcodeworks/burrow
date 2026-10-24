@@ -19,6 +19,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+mod snapshot;
+
+pub use snapshot::{
+    create_snapshot, list_snapshots, read_manifest, restore_snapshot, snapshot_dir, snapshots_dir,
+    validate_name, RestoreReport, SnapshotManifest, SnapshotService, MANIFEST_FILE, SNAPSHOT_DIR,
+    SNAPSHOT_VERSION,
+};
+
 /// Marker written after every `init` command has succeeded.
 pub const INIT_MARKER: &str = ".burrow-initialized.json";
 /// Marker written after the seed script has run.
@@ -45,6 +53,37 @@ pub enum Error {
         path: PathBuf,
         /// Parse failure.
         message: String,
+    },
+    /// A snapshot name is not safe to use as a directory name.
+    #[error(
+        "invalid snapshot name `{0}`: use 1-64 lowercase letters, digits, `-`, `_`, or `.`, starting with a letter or digit"
+    )]
+    InvalidSnapshotName(String),
+    /// A service name in a snapshot manifest is not safe as a directory name.
+    #[error("invalid service name `{0}` in snapshot manifest")]
+    InvalidServiceName(String),
+    /// The named snapshot does not exist.
+    #[error("snapshot `{0}` does not exist")]
+    SnapshotNotFound(String),
+    /// A snapshot with that name already exists.
+    #[error("snapshot `{0}` already exists; choose another name or delete the old snapshot")]
+    SnapshotExists(String),
+    /// A snapshot manifest is invalid or does not match its directory.
+    #[error("{} is not a usable snapshot manifest: {message}", path.display())]
+    Manifest {
+        /// Manifest path.
+        path: PathBuf,
+        /// Explanation.
+        message: String,
+    },
+    /// A symlink or reparse point was found inside a data directory.
+    #[error(
+        "refusing to snapshot reparse point {}; move it outside the service data directory",
+        path.display()
+    )]
+    ReparsePoint {
+        /// Path of the reparse point.
+        path: PathBuf,
     },
 }
 
@@ -165,7 +204,7 @@ pub fn reset(data_dir: &Path) -> Result<()> {
     }
 }
 
-fn unix_now() -> u64 {
+pub(crate) fn unix_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())

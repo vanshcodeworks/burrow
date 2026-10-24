@@ -312,6 +312,199 @@ async fn wait_for_stop(project_dir: &Path, timeout: Duration) -> Result<()> {
     }
 }
 
+/// Refuses data operations while the project's daemon is alive.
+///
+/// A stopped daemon may still leave a stale state file; `load_live_state`
+/// authenticates against the control socket, so stale state does not block a
+/// snapshot or restore.
+async fn ensure_data_is_quiet(project: &Project) -> Result<()> {
+    if control::load_live_state(&project.dir).await?.is_some() {
+        bail!(
+            "services are running for this project; data operations need them stopped\n\
+             help: run `burrow down`, then retry"
+        );
+    }
+    Ok(())
+}
+
+/// Implements `burrow snapshot <name>`.
+pub async fn snapshot(options: &Options, name: String) -> Result<()> {
+    let project = Project::load(options.project.clone())?;
+    burrow_data::validate_name(&name).map_err(|error| anyhow::anyhow!("{error}"))?;
+    ensure_data_is_quiet(&project).await?;
+    let services = project.config.services.keys().cloned().collect::<Vec<_>>();
+    let manifest = burrow_data::create_snapshot(&project.burrow_dir, &name, &services)
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+
+    if options.json {
+        println!("{}", serde_json::to_string_pretty(&manifest)?);
+    } else {
+        println!(
+            "Snapshot `{}` created ({} service{}, {})",
+            manifest.name,
+            manifest.services.len(),
+            if manifest.services.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            format_bytes(manifest.total_bytes())
+        );
+        for service in &manifest.services {
+            if service.present {
+                println!(
+                    "  {:<12} {:>10}  {} file{}",
+                    service.name,
+                    format_bytes(service.bytes),
+                    service.files,
+                    if service.files == 1 { "" } else { "s" }
+                );
+            } else {
+                println!("  {:<12} {:>10}", service.name, "no data");
+            }
+        }
+        println!(
+            "\nStored in {}",
+            burrow_data::snapshot_dir(&project.burrow_dir, &name).display()
+        );
+    }
+    Ok(())
+}
+
+/// Implements `burrow snapshots`.
+pub fn snapshots(options: &Options) -> Result<()> {
+    let project = Project::load(options.project.clone())?;
+    let snapshots = burrow_data::list_snapshots(&project.burrow_dir)
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+
+    if options.json {
+        println!("{}", serde_json::to_string_pretty(&snapshots)?);
+        return Ok(());
+    }
+    if snapshots.is_empty() {
+        println!(
+            "No snapshots yet for `{}`.\n\
+             help: run `burrow down`, then `burrow snapshot <name>`",
+            project.config.project.name
+        );
+        return Ok(());
+    }
+
+    println!(
+        "{:<24} {:<20} {:>10}  SERVICES",
+        "NAME", "CREATED (UTC)", "SIZE"
+    );
+    for snapshot in &snapshots {
+        let services = snapshot
+            .services
+            .iter()
+            .filter(|service| service.present)
+            .map(|service| service.name.as_str())
+            .collect::<Vec<_>>();
+        println!(
+            "{:<24} {:<20} {:>10}  {}",
+            snapshot.name,
+            format_unix_utc(snapshot.created_at),
+            format_bytes(snapshot.total_bytes()),
+            if services.is_empty() {
+                "none".to_owned()
+            } else {
+                services.join(", ")
+            }
+        );
+    }
+    Ok(())
+}
+
+/// Implements `burrow restore <name>`.
+pub async fn restore(options: &Options, name: String) -> Result<()> {
+    let project = Project::load(options.project.clone())?;
+    ensure_data_is_quiet(&project).await?;
+    let report = burrow_data::restore_snapshot(&project.burrow_dir, &name)
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+
+    if options.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!(
+            "Restored snapshot `{}` for {} service{}.",
+            report.name,
+            report.services.len(),
+            if report.services.len() == 1 { "" } else { "s" }
+        );
+        println!("Run `burrow up` to start from the restored data.");
+    }
+    Ok(())
+}
+
+/// Implements `burrow reset <service>`.
+pub async fn reset(options: &Options, service: String) -> Result<()> {
+    let project = Project::load(options.project.clone())?;
+    if !project.config.services.contains_key(&service) {
+        bail!(
+            "unknown service `{service}`\n\
+             help: choose one of: {}",
+            project
+                .config
+                .services
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    ensure_data_is_quiet(&project).await?;
+    let directory = project.data_dir(&service);
+    burrow_data::reset(&directory).map_err(|error| anyhow::anyhow!("{error}"))?;
+
+    if options.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "ok": true,
+                "service": service,
+                "data_dir": directory,
+                "reset": true,
+            }))?
+        );
+    } else {
+        println!("Reset data for `{service}` ({})", directory.display());
+        println!("The next `burrow up` initializes and seeds it again.");
+    }
+    Ok(())
+}
+
+/// Formats a Unix timestamp as `YYYY-MM-DD HH:MM:SS` in UTC without pulling in
+/// a calendar crate. Uses Howard Hinnant's civil-from-days algorithm.
+fn format_unix_utc(seconds: u64) -> String {
+    let days = (seconds / 86_400) as i64;
+    let remainder = seconds % 86_400;
+    let (year, month, day) = civil_from_days(days);
+    format!(
+        "{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}",
+        remainder / 3_600,
+        (remainder % 3_600) / 60,
+        remainder % 60
+    )
+}
+
+fn civil_from_days(days_since_epoch: i64) -> (i64, i64, i64) {
+    let z = days_since_epoch + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let day_of_era = z - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let mut year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    if month <= 2 {
+        year += 1;
+    }
+    (year, month, day)
+}
+
 /// Implements `burrow status`.
 pub async fn status(options: &Options) -> Result<()> {
     let project = Project::load(options.project.clone())?;
@@ -1272,4 +1465,16 @@ fn edit_config(
     std::fs::write(&path, document.to_string())
         .with_context(|| format!("could not write {}", path.display()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_unix_utc;
+
+    #[test]
+    fn utc_timestamps_use_the_civil_calendar() {
+        assert_eq!(format_unix_utc(0), "1970-01-01 00:00:00");
+        assert_eq!(format_unix_utc(1_700_000_000), "2023-11-14 22:13:20");
+        assert_eq!(format_unix_utc(1_709_164_800), "2024-02-29 00:00:00");
+    }
 }

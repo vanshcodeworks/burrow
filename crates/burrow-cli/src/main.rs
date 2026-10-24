@@ -278,10 +278,10 @@ async fn run(command: Command, options: commands::Options) -> Result<()> {
             Some(command) => run_pkg(command, &options).await,
             None => commands::pkg_list(&options),
         },
-        Command::Snapshot { .. } => Err(not_implemented("snapshot", "M6")),
-        Command::Restore { .. } => Err(not_implemented("restore", "M6")),
-        Command::Snapshots => Err(not_implemented("snapshots", "M6")),
-        Command::Reset { .. } => Err(not_implemented("reset", "M6")),
+        Command::Snapshot { name } => commands::snapshot(&options, name).await,
+        Command::Restore { name } => commands::restore(&options, name).await,
+        Command::Snapshots => commands::snapshots(&options),
+        Command::Reset { service } => commands::reset(&options, service).await,
     }
 }
 
@@ -297,12 +297,4 @@ async fn run_pkg(command: PkgCommand, options: &commands::Options) -> Result<()>
         PkgCommand::Gc => commands::pkg_gc(options),
         PkgCommand::Verify => commands::pkg_verify(options),
     }
-}
-
-/// Builds the standard error for a command that arrives in a later milestone.
-fn not_implemented(command: &str, milestone: &str) -> anyhow::Error {
-    anyhow::anyhow!(
-        "`burrow {command}` is not implemented yet (planned for {milestone})\n\
-         note: see docs/roadmap.md for the milestone plan"
-    )
 }
