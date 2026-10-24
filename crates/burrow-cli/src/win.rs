@@ -35,12 +35,12 @@ fn has_extension(name: &OsStr) -> bool {
 
 fn exists_in(directory: &Path, name: &OsStr, extensions: &[OsString]) -> Option<PathBuf> {
     let candidate = directory.join(name);
-    if candidate.is_file() {
-        return Some(candidate);
-    }
     if has_extension(name) {
-        return None;
+        return candidate.is_file().then_some(candidate);
     }
+    // Match `cmd.exe`/`CreateProcess`: try PATHEXT extensions in order before
+    // considering the extensionless name. Otherwise an npm Unix shell shim can
+    // shadow `npm.cmd` and fail to start on Windows.
     for extension in extensions {
         let mut with_extension = candidate.as_os_str().to_owned();
         with_extension.push(extension);
@@ -49,7 +49,7 @@ fn exists_in(directory: &Path, name: &OsStr, extensions: &[OsString]) -> Option<
             return Some(path);
         }
     }
-    None
+    candidate.is_file().then_some(candidate)
 }
 
 /// Finds the executable that Windows would run for `program`.
@@ -111,6 +111,45 @@ pub fn resolve_executable(
             program.to_string_lossy()
         ),
     ))
+}
+
+/// Returns true when the current process runs with an elevated token.
+///
+/// Managed services inherit this token. PostgreSQL's Windows build refuses to
+/// run as an administrator, so `burrow doctor` warns before the first start
+/// rather than letting initialization fail with a cryptic message.
+pub fn is_elevated() -> bool {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    let mut token = HANDLE::default();
+    // SAFETY: `GetCurrentProcess` returns a pseudo-handle that needs no
+    // closing. `OpenProcessToken` only writes to `token` on success.
+    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }.is_err() {
+        return false;
+    }
+
+    let mut elevation = TOKEN_ELEVATION::default();
+    let mut returned = 0u32;
+    // SAFETY: `token` is a valid token handle with TOKEN_QUERY. The output
+    // buffer is a correctly sized, properly aligned `TOKEN_ELEVATION`, and its
+    // length is passed exactly, so the call cannot write out of bounds.
+    let result = unsafe {
+        GetTokenInformation(
+            token,
+            TokenElevation,
+            Some(&mut elevation as *mut TOKEN_ELEVATION as *mut _),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut returned,
+        )
+    };
+    // SAFETY: `token` was opened above and has not been closed or duplicated.
+    let _ = unsafe { CloseHandle(token) };
+
+    result.is_ok() && elevation.TokenIsElevated != 0
 }
 
 /// Opens `url` with the user's default browser, without waiting for it.
@@ -178,5 +217,34 @@ pub fn make_standard_handles_non_inheritable() {
         // `CreateProcess` calls skip this handle while leaving it usable by
         // the current process.
         let _ = unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT.0, HANDLE_FLAGS(0)) };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::exists_in;
+    use std::ffi::{OsStr, OsString};
+
+    #[test]
+    fn pathext_candidates_win_over_an_extensionless_shim() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        std::fs::write(directory.path().join("npm"), "#!/bin/sh\n").expect("write shim");
+        std::fs::write(directory.path().join("npm.cmd"), "@echo off\n").expect("write cmd");
+        let extensions = [OsString::from(".exe"), OsString::from(".cmd")];
+        assert_eq!(
+            exists_in(directory.path(), OsStr::new("npm"), &extensions),
+            Some(directory.path().join("npm.cmd"))
+        );
+    }
+
+    #[test]
+    fn an_explicit_extension_is_not_rewritten() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        std::fs::write(directory.path().join("tool.cmd"), "@echo off\n").expect("write cmd");
+        assert!(exists_in(directory.path(), OsStr::new("tool.ps1"), &[]).is_none());
+        assert_eq!(
+            exists_in(directory.path(), OsStr::new("tool.cmd"), &[]),
+            Some(directory.path().join("tool.cmd"))
+        );
     }
 }

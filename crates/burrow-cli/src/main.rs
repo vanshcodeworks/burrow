@@ -12,8 +12,11 @@ mod commandline;
 mod commands;
 mod control;
 mod daemon;
+mod doctor;
+mod init;
 mod project;
 mod state;
+mod top;
 mod win;
 
 /// Docker Compose's reproducibility, at a fraction of the resources, native on Windows.
@@ -250,7 +253,7 @@ fn init_tracing(verbose: u8) {
 
 async fn run(command: Command, options: commands::Options) -> Result<()> {
     match command {
-        Command::Init { .. } => Err(not_implemented("init", "M5")),
+        Command::Init { template } => crate::init::run(&options, template),
         Command::Up {
             services,
             detach,
@@ -269,8 +272,8 @@ async fn run(command: Command, options: commands::Options) -> Result<()> {
         Command::Open { service } => commands::open(&options, service).await,
         Command::Env { service, format } => commands::env(&options, service, format).await,
         Command::Exec { service, cmd } => commands::exec(&options, service, cmd).await,
-        Command::Doctor => Err(not_implemented("doctor", "M5")),
-        Command::Top => Err(not_implemented("top", "M5")),
+        Command::Doctor => crate::doctor::run(&options).await,
+        Command::Top => crate::top::run(&options).await,
         Command::Pkg { command } => match command {
             Some(command) => run_pkg(command, &options).await,
             None => commands::pkg_list(&options),

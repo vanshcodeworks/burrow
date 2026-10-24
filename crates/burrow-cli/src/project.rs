@@ -38,19 +38,7 @@ pub struct Project {
 impl Project {
     /// Loads `burrow.toml` from `directory` or the current directory.
     pub fn load(directory: Option<PathBuf>) -> Result<Self> {
-        let directory = directory.unwrap_or(
-            std::env::current_dir()
-                .context("could not determine the current directory; pass --project <DIR>")?,
-        );
-        let dir = directory.canonicalize().with_context(|| {
-            format!(
-                "could not open project directory {}; check that it exists",
-                directory.display()
-            )
-        })?;
-        // `canonicalize` returns a verbatim `\\?\` path. Child processes and
-        // `cmd.exe` handle the plain drive form better, so strip the prefix.
-        let dir = simplify_windows_path(dir);
+        let dir = resolve_directory(directory)?;
 
         let config = burrow_config::load(&dir).map_err(|error| {
             anyhow::anyhow!(
@@ -83,6 +71,24 @@ impl Project {
     pub fn ports(&self) -> Result<PortAllocator> {
         PortAllocator::load(&self.burrow_dir).map_err(Into::into)
     }
+}
+
+/// Resolves a project directory to an absolute path without a verbatim prefix.
+///
+/// `canonicalize` returns `\\?\C:\...` on Windows. Child processes and
+/// `cmd.exe` handle the plain drive form better, so the prefix is stripped.
+pub fn resolve_directory(directory: Option<PathBuf>) -> Result<PathBuf> {
+    let directory = directory.unwrap_or(
+        std::env::current_dir()
+            .context("could not determine the current directory; pass --project <DIR>")?,
+    );
+    let canonical = directory.canonicalize().with_context(|| {
+        format!(
+            "could not open project directory {}; check that it exists",
+            directory.display()
+        )
+    })?;
+    Ok(simplify_windows_path(canonical))
 }
 
 /// Strips the verbatim `\\?\` prefix from a canonical Windows path.
