@@ -1,0 +1,19 @@
+# Build output
+/target
+**/*.rs.bk
+
+# Local instructions / scratch notes
+todo.md
+
+# Burrow project-local state (contains generated secrets)
+.burrow/
+burrow.local.toml
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# OS
+Thumbs.db
+Desktop.ini
