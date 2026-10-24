@@ -242,11 +242,317 @@ fn pkg_remove_edits_the_config_without_downloading() {
 }
 
 #[test]
-fn env_json_reports_not_implemented() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let output = run_in(dir.path(), &["env", "--format", "json"]);
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr(&output).contains("not implemented yet"));
+fn env_prints_project_endpoints_and_the_selected_service_environment() {
+    let project = TestProject::new(
+        "[project]\nname = \"envproj\"\n\n\
+         [services.api]\n\
+         run = 'cmd /C ping -n 30 127.0.0.1 > NUL'\n\
+         env = { GREETING = \"hello world\" }\n\n\
+         [services.web]\n\
+         run = 'cmd /C ping -n 30 127.0.0.1 > NUL'\n\
+         route = \"shop.localhost\"\n",
+    );
+
+    let all = run_in(project.path(), &["env", "--format", "json"]);
+    assert!(
+        all.status.success(),
+        "env failed:\nstdout:\n{}\nstderr:\n{}",
+        stdout(&all),
+        stderr(&all)
+    );
+    let values: serde_json::Value = serde_json::from_str(&stdout(&all)).expect("env JSON");
+    assert_eq!(values["BURROW_PROJECT"], "envproj");
+    assert_eq!(values["BURROW_API_HOST"], "127.0.0.1");
+    assert_eq!(values["BURROW_WEB_HOST"], "127.0.0.1");
+    assert!(
+        values["BURROW_API_URL"]
+            .as_str()
+            .is_some_and(|url| url.starts_with("http://127.0.0.1:")),
+        "values were: {values}"
+    );
+    assert!(
+        values["BURROW_WEB_ROUTE_URL"]
+            .as_str()
+            .is_some_and(|url| url.starts_with("http://shop.localhost")),
+        "values were: {values}"
+    );
+    assert!(
+        values.get("GREETING").is_none(),
+        "endpoint output leaked a service variable: {values}"
+    );
+
+    let service = run_in(project.path(), &["env", "api", "--format", "json"]);
+    assert!(
+        service.status.success(),
+        "service env failed:\n{}",
+        stderr(&service)
+    );
+    let values: serde_json::Value = serde_json::from_str(&stdout(&service)).expect("service JSON");
+    assert_eq!(values["GREETING"], "hello world");
+    assert_eq!(values["BURROW_SERVICE"], "api");
+    assert_eq!(values["HOST"], "127.0.0.1");
+    assert!(values["PORT"].as_str().is_some());
+    assert!(
+        values["BURROW_SERVICE_PASSWORD"]
+            .as_str()
+            .is_some_and(|password| !password.is_empty()),
+        "values were: {values}"
+    );
+
+    let dotenv = run_in(project.path(), &["env", "api"]);
+    assert!(dotenv.status.success(), "stderr:\n{}", stderr(&dotenv));
+    let text = stdout(&dotenv);
+    assert!(
+        text.contains("GREETING=\"hello world\""),
+        "env was:\n{text}"
+    );
+    assert!(text.contains("BURROW_SERVICE=api"), "env was:\n{text}");
+
+    let powershell = run_in(project.path(), &["env", "api", "--format", "powershell"]);
+    assert!(
+        powershell.status.success(),
+        "stderr:\n{}",
+        stderr(&powershell)
+    );
+    assert!(
+        stdout(&powershell).contains("$env:GREETING = 'hello world'"),
+        "env was:\n{}",
+        stdout(&powershell)
+    );
+}
+
+#[test]
+fn env_for_a_package_service_does_not_download_the_package() {
+    let project =
+        TestProject::new("[project]\nname = \"envpkg\"\n\n[services.db]\nuse = \"postgres@16\"\n");
+    let cache = project.path().join("cache");
+    let output = run_with_cache(project.path(), &cache, &["env", "--format", "json"]);
+    assert!(
+        output.status.success(),
+        "env failed:\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(
+        !cache.join("archives").exists(),
+        "burrow env downloaded a package archive"
+    );
+    let values: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("env JSON");
+    let port = values["BURROW_DB_PORT"].as_str().expect("db port");
+    assert_eq!(
+        values["BURROW_DB_URL"],
+        format!("postgres://postgres@127.0.0.1:{port}/postgres")
+    );
+}
+
+#[test]
+fn exec_uses_the_service_environment_working_directory_and_exit_code() {
+    let project = TestProject::new(
+        "[project]\nname = \"execproj\"\n\n\
+         [services.api]\n\
+         run = 'cmd /C ping -n 30 127.0.0.1 > NUL'\n\
+         cwd = \"sub\"\n\
+         env = { GREETING = \"hello from the service\" }\n",
+    );
+    let sub = project.path().join("sub");
+    fs::create_dir_all(&sub).expect("create subdirectory");
+    fs::write(sub.join("hello.cmd"), "@echo off\r\necho batch-ok\r\n").expect("write batch file");
+
+    let output = run_in(
+        project.path(),
+        &["exec", "api", "--", "cmd", "/D", "/C", "echo", "%GREETING%"],
+    );
+    assert!(
+        output.status.success(),
+        "exec failed:\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert_eq!(stdout(&output).trim(), "hello from the service");
+
+    let cwd = run_in(
+        project.path(),
+        &["exec", "api", "--", "cmd", "/D", "/C", "cd"],
+    );
+    assert!(cwd.status.success(), "stderr:\n{}", stderr(&cwd));
+    assert!(
+        stdout(&cwd).trim().to_ascii_lowercase().ends_with("sub"),
+        "working directory was:\n{}",
+        stdout(&cwd)
+    );
+
+    // `.cmd` shims are found on the service working directory and executed
+    // through cmd.exe without Burrow building a shell string.
+    let batch = run_in(project.path(), &["exec", "api", "--", "hello.cmd"]);
+    assert!(
+        batch.status.success(),
+        "batch exec failed:\nstdout:\n{}\nstderr:\n{}",
+        stdout(&batch),
+        stderr(&batch)
+    );
+    assert!(
+        stdout(&batch).contains("batch-ok"),
+        "stdout:\n{}",
+        stdout(&batch)
+    );
+
+    let exit = run_in(
+        project.path(),
+        &["exec", "api", "--", "cmd", "/D", "/C", "exit", "7"],
+    );
+    assert_eq!(exit.status.code(), Some(7), "stderr:\n{}", stderr(&exit));
+
+    let missing = run_in(
+        project.path(),
+        &["exec", "api", "--", "not-a-real-burrow-command"],
+    );
+    assert!(!missing.status.success());
+    assert!(
+        stderr(&missing).contains("could not resolve"),
+        "stderr:\n{}",
+        stderr(&missing)
+    );
+
+    let unknown = run_in(
+        project.path(),
+        &["exec", "nope", "--", "cmd", "/C", "exit", "0"],
+    );
+    assert!(!unknown.status.success());
+    assert!(
+        stderr(&unknown).contains("unknown service `nope`"),
+        "stderr:\n{}",
+        stderr(&unknown)
+    );
+}
+
+fn http_request(port: u16, host: &str, path: &str) -> String {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect to proxy");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("set timeout");
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n"
+    )
+    .expect("write request");
+    let mut response = String::new();
+    std::io::Read::read_to_string(&mut stream, &mut response).expect("read response");
+    response
+}
+
+#[test]
+fn proxy_routes_by_host_and_open_prints_the_route() {
+    let project = TestProject::new(
+        "[project]\nname = \"proxyproj\"\n\n\
+         [services.web]\n\
+         run = 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File server.ps1'\n\
+         route = \"shop.localhost\"\n\
+         health = { tcp = true, timeout = \"20s\", interval = \"100ms\" }\n",
+    );
+    fs::write(
+        project.path().join("server.ps1"),
+        r#"$listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, [int]$env:PORT)
+$listener.Start()
+while ($true) {
+  $client = $listener.AcceptTcpClient()
+  try {
+    $stream = $client.GetStream()
+    $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::ASCII)
+    $null = $reader.ReadLine()
+    while (($line = $reader.ReadLine()) -ne $null -and $line -ne '') { }
+    $body = "hello through proxy"
+    $response = "HTTP/1.1 200 OK`r`nContent-Type: text/plain`r`nContent-Length: $($body.Length)`r`nConnection: close`r`n`r`n$body"
+    $bytes = [Text.Encoding]::ASCII.GetBytes($response)
+    $stream.Write($bytes, 0, $bytes.Length)
+    $stream.Flush()
+  } finally { $client.Close() }
+}
+"#,
+    )
+    .expect("write HTTP server");
+
+    let up = run_in(project.path(), &["up", "--detach", "--yes"]);
+    assert!(
+        up.status.success(),
+        "up failed:\nstdout:\n{}\nstderr:\n{}",
+        stdout(&up),
+        stderr(&up)
+    );
+    assert!(
+        stdout(&up).contains("http://shop.localhost"),
+        "up output:\n{}",
+        stdout(&up)
+    );
+
+    let state = project.wait_until(Duration::from_secs(20), |state| {
+        state["ready"].as_bool() == Some(true)
+            && state["services"]["web"]["status"] == "healthy"
+            && state["services"]["web"]["route_url"].is_string()
+    });
+    let proxy_port = state["proxy_port"].as_u64().expect("proxy port") as u16;
+    let route_url = state["services"]["web"]["route_url"]
+        .as_str()
+        .expect("route URL")
+        .to_owned();
+    assert!(
+        route_url.starts_with("http://shop.localhost"),
+        "route URL: {route_url}"
+    );
+
+    let routed = http_request(proxy_port, "shop.localhost", "/check?x=1");
+    assert!(routed.starts_with("HTTP/1.1 200"), "response:\n{routed}");
+    assert!(
+        routed.ends_with("hello through proxy"),
+        "response:\n{routed}"
+    );
+
+    let unknown = http_request(proxy_port, "nope.localhost", "/");
+    assert!(unknown.starts_with("HTTP/1.1 404"), "response:\n{unknown}");
+    assert!(unknown.contains("Known routes"), "response:\n{unknown}");
+
+    let open = burrow()
+        .arg("--project")
+        .arg(project.path())
+        .arg("open")
+        .env("BURROW_NO_BROWSER", "1")
+        .output()
+        .expect("run burrow open");
+    assert!(open.status.success(), "open failed:\n{}", stderr(&open));
+    assert_eq!(stdout(&open).trim(), route_url);
+
+    let named = burrow()
+        .arg("--project")
+        .arg(project.path())
+        .arg("open")
+        .arg("web")
+        .env("BURROW_NO_BROWSER", "1")
+        .output()
+        .expect("run burrow open web");
+    assert!(
+        named.status.success(),
+        "open web failed:\n{}",
+        stderr(&named)
+    );
+    assert_eq!(stdout(&named).trim(), route_url);
+
+    let missing = burrow()
+        .arg("--project")
+        .arg(project.path())
+        .arg("open")
+        .arg("nope")
+        .env("BURROW_NO_BROWSER", "1")
+        .output()
+        .expect("run burrow open nope");
+    assert!(!missing.status.success());
+    assert!(
+        stderr(&missing).contains("is not running"),
+        "stderr:\n{}",
+        stderr(&missing)
+    );
+
+    let down = run_in(project.path(), &["down"]);
+    assert!(down.status.success(), "down failed:\n{}", stderr(&down));
+    assert!(!project.state_path().exists());
 }
 
 #[test]
