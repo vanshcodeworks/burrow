@@ -17,11 +17,14 @@ burrow-data = { path = "../burrow-data" }
 burrow-net = { path = "../burrow-net" }
 burrow-pkg = { path = "../burrow-pkg" }
 burrow-supervisor = { path = "../burrow-supervisor" }
+burrow-tui = { path = "../burrow-tui" }
 clap.workspace = true
+crossterm.workspace = true
 futures-util.workspace = true
 hex.workspace = true
 humantime.workspace = true
 rand.workspace = true
+ratatui.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
