@@ -1,0 +1,5 @@
+[env]
+# Console control events (Ctrl+Break) are process-wide on Windows. Serial test
+# execution prevents one test's supervisor from signalling another test's
+# children when the whole suite runs in one terminal.
+RUST_TEST_THREADS = "1"
