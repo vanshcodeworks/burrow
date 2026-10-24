@@ -1,8 +1,19 @@
 //! Package management for Burrow.
 //!
-//! Future responsibility: read registry entries, perform verified downloads
-//! into a shared content-addressed cache, verify SHA-256 hashes before use,
-//! and extract archives with zip-slip and path-traversal hardening.
-//!
-//! Implemented in milestone M3 (package manager). The crate is intentionally
-//! empty in M1.
+//! Reads the built-in registry, performs SHA-256-verified downloads into a
+//! shared content-addressed cache, resumes interrupted downloads, and extracts
+//! archives with zip-slip and path-traversal hardening. The runtime uses the
+//! extracted directory to run a managed service such as PostgreSQL.
+
+pub mod builtin;
+pub mod cache;
+pub mod error;
+pub mod extract;
+pub mod registry;
+
+pub use cache::{sha256_file, Cache, DownloadProgress, GcReport, Marker, PackageRef, VerifyReport};
+pub use error::{Error, Result};
+pub use registry::{
+    ArchiveKind, Entry, InitStep, InitWhen, PackageHealth, PackageVersion, Platform, Registry,
+    Resolved, TemplateCommand, REGISTRY_SCHEMA, WINDOWS_X86_64,
+};

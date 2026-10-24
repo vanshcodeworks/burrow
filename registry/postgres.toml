@@ -1,0 +1,63 @@
+# PostgreSQL, built by EnterpriseDB.
+#
+# The archive is the official "binaries" zip published by EnterpriseDB (the
+# company that produces the Windows PostgreSQL installers). The SHA-256 and
+# size below were computed locally from that exact download; the download URL
+# is the same file the EnterpriseDB download page links to.
+schema = 1
+name = "postgres"
+description = "PostgreSQL relational database"
+license = "PostgreSQL"
+upstream = "https://www.postgresql.org/"
+source = "https://www.enterprisedb.com/download-postgresql-binaries"
+
+[versions."16.15"]
+# `initdb` creates a cluster owned by the current Windows user. `-A trust` only
+# exists inside this per-project data directory and the server is bound to
+# loopback by the `run` command below.
+init = [
+  { program = "initdb", args = [
+    "-D", "{{data_dir}}",
+    "-U", "postgres",
+    "-A", "trust",
+    "-E", "UTF8",
+    "--no-locale",
+  ] },
+]
+run = { program = "postgres", args = [
+  "-D", "{{data_dir}}",
+  "-p", "{{port}}",
+  "-c", "listen_addresses=127.0.0.1",
+] }
+stop = { program = "pg_ctl", args = [
+  "-D", "{{data_dir}}",
+  "stop",
+  "-m", "fast",
+  "-w",
+  "-t", "15",
+] }
+seed = { program = "psql", args = [
+  "-X",
+  "-q",
+  "-v", "ON_ERROR_STOP=1",
+  "-h", "{{host}}",
+  "-p", "{{port}}",
+  "-U", "postgres",
+  "-d", "postgres",
+  "-f", "{{seed_file}}",
+] }
+url_template = "postgres://postgres@{{host}}:{{port}}/postgres"
+health = { tcp = true }
+default_port = 5432
+
+[versions."16.15".platforms.windows-x86_64]
+url = "https://get.enterprisedb.com/postgresql/postgresql-16.15-5-windows-x64-binaries.zip"
+sha256 = "43bb45f173a6f08cf1d29a97a6d8deb119e8e8093a24c00d2d1001a0ccaa8281"
+size = 373254386
+archive = "zip"
+
+[versions."16.15".platforms.windows-x86_64.binaries]
+postgres = "pgsql/bin/postgres.exe"
+initdb = "pgsql/bin/initdb.exe"
+pg_ctl = "pgsql/bin/pg_ctl.exe"
+psql = "pgsql/bin/psql.exe"
