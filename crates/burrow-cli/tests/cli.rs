@@ -758,3 +758,136 @@ fn down_removes_state_left_by_a_dead_daemon() {
     assert!(stdout(&output).contains("removed stale state"));
     assert!(!project.state_path().exists());
 }
+
+#[test]
+fn init_detects_vite_and_refuses_to_overwrite() {
+    let dir = tempfile::tempdir().expect("create project directory");
+    fs::write(
+        dir.path().join("package.json"),
+        r#"{
+  "name": "shop",
+  "private": true,
+  "scripts": { "dev": "vite" },
+  "devDependencies": { "vite": "^6.0.0" }
+}"#,
+    )
+    .expect("write package.json");
+
+    let output = run_in(dir.path(), &["init", "--json"]);
+    assert!(output.status.success(), "init failed:\n{}", stderr(&output));
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("init --json prints JSON");
+    assert_eq!(report["template"], "node");
+    assert_eq!(report["services"][0]["name"], "web");
+    assert!(report["summary"].as_str().unwrap_or("").contains("Vite"));
+
+    let config = fs::read_to_string(dir.path().join("burrow.toml")).expect("read burrow.toml");
+    assert!(config.contains(r#"name = ""#));
+    assert!(config.contains("npm run dev -- --port {{web.port}} --host 127.0.0.1"));
+    assert!(config.contains(r#"route = "web.localhost""#));
+    assert!(config.contains(r#"PORT = "{{web.port}}""#));
+
+    let again = run_in(dir.path(), &["init"]);
+    assert!(!again.status.success(), "a second init must fail");
+    assert!(stderr(&again).contains("already exists"));
+}
+
+#[test]
+fn init_template_postgres_writes_a_seed_file() {
+    let dir = tempfile::tempdir().expect("create project directory");
+    let output = run_in(dir.path(), &["init", "--template", "postgres", "--json"]);
+    assert!(output.status.success(), "init failed:\n{}", stderr(&output));
+
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("init --json prints JSON");
+    assert_eq!(report["template"], "postgres");
+    assert!(report["created"]
+        .as_array()
+        .expect("created list")
+        .iter()
+        .any(|entry| entry == "db/seed.sql"));
+
+    let config = fs::read_to_string(dir.path().join("burrow.toml")).expect("read burrow.toml");
+    assert!(config.contains(r#"use = "postgres@16""#));
+    assert!(config.contains(r#"seed = "db/seed.sql""#));
+    assert!(dir.path().join("db").join("seed.sql").is_file());
+}
+
+#[test]
+fn init_without_a_detectable_stack_explains_the_templates() {
+    let dir = tempfile::tempdir().expect("create project directory");
+    let output = run_in(dir.path(), &["init"]);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("could not detect a stack"));
+    assert!(stderr(&output).contains("node|python|postgres|cargo|go"));
+    assert!(!dir.path().join("burrow.toml").exists());
+}
+
+#[test]
+fn doctor_reports_a_valid_project_as_json() {
+    let config = format!(
+        "[project]\nname = \"diagnosed\"\n\n[services.api]\n{}\n",
+        powershell_listener()
+    );
+    let project = TestProject::new(&config);
+
+    let human = run_in(project.path(), &["doctor"]);
+    assert!(
+        human.status.success(),
+        "doctor should pass with warnings only:\n{}",
+        stderr(&human)
+    );
+    let text = stdout(&human);
+    assert!(text.contains("Burrow doctor"));
+    assert!(text.contains("config"));
+    assert!(text.contains("not approved yet"));
+
+    let json = run_in(project.path(), &["doctor", "--json"]);
+    assert!(
+        json.status.success(),
+        "doctor --json failed:\n{}",
+        stderr(&json)
+    );
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout(&json)).expect("doctor --json prints JSON");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["project"], "diagnosed");
+    assert!(report["summary"]["failures"].as_u64() == Some(0));
+    assert!(report["checks"]
+        .as_array()
+        .expect("checks list")
+        .iter()
+        .any(|check| check["name"] == "config" && check["status"] == "ok"));
+}
+
+#[test]
+fn doctor_fails_without_a_config_file() {
+    let dir = tempfile::tempdir().expect("create project directory");
+    let output = run_in(dir.path(), &["doctor", "--json"]);
+    assert!(
+        !output.status.success(),
+        "doctor must fail without burrow.toml"
+    );
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("doctor --json prints JSON");
+    assert_eq!(report["ok"], false);
+    assert!(report["checks"]
+        .as_array()
+        .expect("checks list")
+        .iter()
+        .any(|check| check["name"] == "config" && check["status"] == "fail"));
+    assert!(stderr(&output).contains("doctor found"));
+}
+
+#[test]
+fn top_requires_an_interactive_terminal() {
+    let config = format!(
+        "[project]\nname = \"dashboard\"\n\n[services.api]\n{}\n",
+        powershell_listener()
+    );
+    let project = TestProject::new(&config);
+    let output = run_in(project.path(), &["top"]);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("interactive terminal"));
+    assert!(stderr(&output).contains("burrow status"));
+}
