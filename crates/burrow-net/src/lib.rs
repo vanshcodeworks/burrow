@@ -1,11 +1,11 @@
-//! Networking for Burrow: stable port allocation and, in M4, the loopback
-//! reverse proxy.
+//! Networking for Burrow: stable port allocation and a loopback reverse proxy.
 //!
 //! Ports are remembered per project so URLs stay stable across restarts. A
 //! remembered port is only reused when it can still be bound on `127.0.0.1`;
 //! this also avoids collisions with other projects running at the same time.
 //!
-//! The proxy and `*.localhost` routing are added in milestone M4.
+//! The proxy in [`proxy`] maps `Host` headers such as `shop.localhost` to
+//! loopback service ports and tunnels HTTP/1.1 upgrades for WebSocket clients.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+
+pub mod proxy;
 
 /// Port range used for automatic allocation.
 pub const AUTO_PORT_START: u16 = 40_000;
@@ -108,7 +110,12 @@ impl PortAllocator {
     /// A fixed request must be free; it is never silently replaced.
     pub fn allocate(&mut self, service: &str, fixed: Option<u16>) -> Result<u16, PortError> {
         if let Some(port) = fixed {
-            if self.ports.get(service) == Some(&port) || is_free(port) {
+            // A pinned assignment belongs to a live daemon and is busy by
+            // design; everything else must still be bindable right now.
+            if self.claimed.contains(&port) && self.ports.get(service) == Some(&port) {
+                return Ok(port);
+            }
+            if is_free(port) {
                 self.ports.insert(service.to_owned(), port);
                 self.claimed.insert(port);
                 return Ok(port);
@@ -117,6 +124,11 @@ impl PortAllocator {
         }
 
         if let Some(port) = self.ports.get(service).copied() {
+            // A pinned port belongs to a live daemon. It may be busy by
+            // definition, so never probe or replace it.
+            if self.claimed.contains(&port) {
+                return Ok(port);
+            }
             if is_free(port) && self.claimed.insert(port) {
                 return Ok(port);
             }
@@ -155,6 +167,15 @@ impl PortAllocator {
         self.claimed.insert(port);
     }
 
+    /// Pins `service` to a port that is already in use by a running daemon.
+    ///
+    /// Unlike [`Self::allocate`], this never probes the port, so `burrow env`
+    /// and `burrow exec` report the live assignment instead of replacing it.
+    pub fn pin(&mut self, service: &str, port: u16) {
+        self.ports.insert(service.to_owned(), port);
+        self.claimed.insert(port);
+    }
+
     /// Forgets one service's assignment.
     pub fn release(&mut self, service: &str) {
         if let Some(port) = self.ports.remove(service) {
@@ -165,6 +186,14 @@ impl PortAllocator {
     /// Returns the remembered port for a service, if any.
     pub fn remembered(&self, service: &str) -> Option<u16> {
         self.ports.get(service).copied()
+    }
+
+    /// Returns the port only when it is pinned to a live owner.
+    pub fn pinned(&self, service: &str) -> Option<u16> {
+        self.ports
+            .get(service)
+            .copied()
+            .filter(|port| self.claimed.contains(port))
     }
 
     /// Writes assignments atomically.
@@ -245,6 +274,18 @@ mod tests {
         assert_ne!(first, second);
         assert!(is_free(first));
         assert!(is_free(second));
+    }
+
+    #[test]
+    fn pinned_ports_survive_a_busy_probe() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let mut allocator = PortAllocator::load(temp.path()).expect("load");
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind");
+        let busy = listener.local_addr().expect("address").port();
+
+        allocator.pin("api", busy);
+        assert_eq!(allocator.allocate("api", None).expect("pinned"), busy);
+        assert_eq!(allocator.allocate("api", None).expect("pinned again"), busy);
     }
 
     #[test]
