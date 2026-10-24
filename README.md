@@ -11,11 +11,11 @@ teardown, and a live dashboard.
 
 ## Status
 
-**M1-M4 complete.** Burrow can load a validated `burrow.toml`, start services in
+**M1-M5 complete.** Burrow can load a validated `burrow.toml`, start services in
 dependency order as native Windows processes, manage verified package downloads,
-expose routed `*.localhost` URLs through a loopback proxy, and print or inject
-resolved environments. The TUI, `doctor`, `init`, snapshots, and the full user
-documentation are still being built (M5-M6).
+expose routed `*.localhost` URLs through a loopback proxy, print or inject
+resolved environments, scaffold and diagnose projects, and show a live terminal
+dashboard. Snapshots and the full user documentation are still being built (M6).
 
 ## What works now
 
@@ -30,6 +30,13 @@ documentation are still being built (M5-M6).
   downloads, hardened extraction, and one-time database initialization/seeding.
 - Stable per-project ports, a `*.localhost` reverse proxy with WebSocket
   passthrough, and the `open`, `env`, and `exec` commands.
+- Stack detection and scaffolding through `burrow init`, including Node
+  (Vite/Next/Express), Python (FastAPI/Flask), Cargo, Go, and PostgreSQL.
+- A read-only `burrow doctor` that checks the platform, configuration, cache,
+  trust, secrets, packages, fixed ports, commands, daemon, and proxy, with a
+  concrete remedy for every problem.
+- A ratatui dashboard (`burrow top`) with live service state, ports, CPU,
+  memory, uptime, and a scrolling log pane.
 - Tests and checks: unit and integration tests across the workspace and a
   `windows-latest` CI workflow that runs rustfmt, clippy, tests, and a release
   build.
@@ -63,12 +70,12 @@ cargo run -p burrow-supervisor --example supervise -- cmd /C echo hello
 ## Commands
 
 `burrow --help` and `burrow --version` work today. The lifecycle, package,
-environment, and networking commands below are implemented; the remaining
-commands exit with code 1 and name their planned milestone.
+environment, networking, and experience commands below are implemented; the
+snapshot commands exit with code 1 and name their planned milestone.
 
 | Command | Purpose | Status |
 | --- | --- | --- |
-| `burrow init [--template <name>]` | Scaffold `burrow.toml` and detect the stack | Not implemented (M5) |
+| `burrow init [--template <name>]` | Scaffold `burrow.toml` and detect the stack | Implemented |
 | `burrow up [service...] [--detach] [--yes]` | Start all or selected services | Implemented |
 | `burrow down` | Stop everything for this project | Implemented |
 | `burrow restart <service>` | Restart one service | Implemented |
@@ -77,8 +84,8 @@ commands exit with code 1 and name their planned milestone.
 | `burrow open [service]` | Open a routed URL in the browser | Implemented |
 | `burrow env [service] [--format dotenv\|json\|powershell]` | Print endpoints, or one service's resolved environment | Implemented |
 | `burrow exec <service> -- <cmd>...` | Run a command with a service's environment | Implemented |
-| `burrow doctor` | Diagnose local environment problems | Not implemented (M5) |
-| `burrow top` | Open the terminal dashboard | Not implemented (M5) |
+| `burrow doctor` | Diagnose local environment problems | Implemented |
+| `burrow top` | Open the terminal dashboard | Implemented |
 | `burrow pkg list\|add\|remove\|gc\|verify` | Manage packages and the cache | Implemented |
 | `burrow snapshot <name>` | Snapshot a service's data | Not implemented (M6) |
 | `burrow restore <name>` | Restore a named snapshot | Not implemented (M6) |
@@ -111,8 +118,7 @@ and is tracked in [`docs/roadmap.md`](docs/roadmap.md).
 ## Limitations
 
 - Windows 10/11 only. There is no Linux or macOS support.
-- The dashboard, `doctor`, `init`, and data snapshots are not implemented yet
-  (M5-M6).
+- Data snapshots, restore, and reset are not implemented yet (M6).
 - Resource limits and process cleanup are not a security boundary and do not
   sandbox services.
 - Burrow is a local development tool, not a production deployment tool, and does

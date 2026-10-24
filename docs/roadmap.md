@@ -50,12 +50,12 @@ M1 is a foundation only. Burrow is not usable end-to-end until M2 ships.
 
 ## M5 - Experience
 
-- [ ] ratatui dashboard with live state, resource use, and a log pane (`top`)
-- [ ] `doctor` checks with a concrete remedy for every failure
-- [ ] `init` with stack detection
-- [ ] Trust prompt with approval keyed by a hash of the config
-- [ ] `burrow schema` emitting the `burrow.toml` JSON Schema
-- [ ] JSON output where supported
+- [x] ratatui dashboard with live state, resource use, and a log pane (`top`)
+- [x] `doctor` checks with a concrete remedy for every failure
+- [x] `init` with stack detection
+- [x] Trust prompt with approval keyed by a hash of the config
+- [x] `burrow schema` emitting the `burrow.toml` JSON Schema
+- [x] JSON output where supported
 
 ## M6 - Data and polish
 

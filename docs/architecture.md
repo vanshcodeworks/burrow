@@ -19,8 +19,8 @@ status, see [`roadmap.md`](roadmap.md).
 Only `burrow-cli` produces a user-facing binary. The `burrow-supervisor` package
 also builds a test-only `burrow-testbin` binary target (not a product crate and
 not shipped), which the supervisor integration tests spawn as a real child
-process. The stub crates are intentionally empty in M1 and carry their design
-intent in crate-level docs.
+process. Each library crate owns a narrow layer and is consumed by the CLI; the
+crate-level docs describe the contracts.
 
 ## Supervisor design (M1)
 
@@ -141,6 +141,49 @@ exit code.
 `burrow open` reads live state, prefers the proxy route URL, and launches the
 default browser. Setting `BURROW_NO_BROWSER` makes it print the URL instead,
 which is useful in tests and remote shells.
+
+## Experience commands (M5)
+
+`burrow init` inspects the project directory and writes a starter `burrow.toml`.
+It refuses to overwrite an existing file, and it validates the generated TOML
+before creating anything. Detection is deliberately conservative:
+
+- Node: reads `package.json`, prefers the `dev` script over `start`, and
+  recognizes Vite, Next.js, and Express. Only Vite and Next receive explicit
+  port flags, because those are the frameworks whose flags Burrow can verify.
+  The package manager comes from `packageManager` or the lockfile.
+- Python: looks for FastAPI or Flask instances in files up to two directories
+  deep and emits `uvicorn module:variable` or `flask --app module`. Module names
+  are computed relative to the project root, so a root `main.py` becomes
+  `main:app`.
+- Cargo and Go: recognize `Cargo.toml` + `src/main.rs` and `go.mod` +
+  `main.go`.
+- PostgreSQL: `--template postgres` writes a `db/seed.sql` placeholder and a
+  service that uses the verified registry entry.
+
+Unrecognized dev servers still get `PORT` in their environment, but no route or
+health check, plus a comment explaining what to add after confirming that the
+server honors the variable.
+
+`burrow doctor` is read-only. It never downloads a package, generates a secret,
+or binds a port. It checks the platform and elevation state, `burrow.toml`,
+cache location and writability, trust approval, secrets, package completeness,
+fixed ports, command resolution, daemon liveness and config drift, and proxy
+exposure. Every failure includes a remedy; `--json` emits the same report for
+scripts, and the command exits nonzero when any check fails. Running elevated is
+reported as a warning because PostgreSQL's Windows build refuses to initialize
+with an administrator token.
+
+`burrow top` requires an interactive terminal and refreshes once per second. It
+reads the same authenticated control socket as `status` and `logs`, so it shows
+live rather than stale state. The `burrow-tui` crate is rendering-only; all
+terminal modes, key handling, and control traffic stay in the CLI. A guard
+restores the console modes and exits the alternate screen on every return path,
+including errors and panics.
+
+Windows command lookup follows `PATHEXT` order before considering an
+extensionless file. This matches `cmd.exe` and avoids selecting an npm Unix shell
+shim instead of `npm.cmd`. `.cmd` and `.bat` targets run through `cmd.exe`.
 
 ## Safety rules
 
