@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Config",
+  "description": "Top-level `burrow.toml`.",
+  "type": "object",
+  "properties": {
+    "project": {
+      "description": "Project metadata.",
+      "$ref": "#/$defs/Project"
+    },
+    "services": {
+      "description": "Services keyed by name.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Service"
+      },
+      "default": {}
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "project"
+  ],
+  "$defs": {
+    "HealthConfig": {
+      "description": "Health check configuration.",
+      "type": "object",
+      "properties": {
+        "cmd": {
+          "description": "Run a command; success means exit code 0.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "http": {
+          "description": "HTTP path, for example `/health`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "interval": {
+          "description": "Delay between attempts, for example `\"500ms\"`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retries": {
+          "description": "Maximum number of attempts.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "tcp": {
+          "description": "Wait for a TCP connection on the service port.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "timeout": {
+          "description": "Total time to keep trying, for example `\"60s\"`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Port": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "auto"
+        },
+        {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        }
+      ]
+    },
+    "Project": {
+      "description": "Project metadata.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "Project name. Lowercase ASCII letters, digits, and hyphens.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "RestartPolicy": {
+      "description": "Restart behaviour after an unexpected exit.",
+      "oneOf": [
+        {
+          "description": "Never restart.",
+          "type": "string",
+          "const": "never"
+        },
+        {
+          "description": "Restart only after a non-zero exit.",
+          "type": "string",
+          "const": "on-failure"
+        },
+        {
+          "description": "Always restart.",
+          "type": "string",
+          "const": "always"
+        }
+      ]
+    },
+    "Service": {
+      "description": "One service description.",
+      "type": "object",
+      "properties": {
+        "cpu": {
+          "description": "Optional hard CPU cap, for example `\"50%\"`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cwd": {
+          "description": "Working directory, relative to the project directory.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env": {
+          "description": "Environment variables layered over Burrow's environment.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "expose": {
+          "description": "Bind non-loopback interfaces for this service. Off by default.",
+          "type": "boolean",
+          "default": false
+        },
+        "grace": {
+          "description": "How long a graceful stop may take.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "health": {
+          "description": "Health check used before dependents start.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HealthConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "idle_stop": {
+          "description": "Phase-2 idle stop duration. Parsed and accepted in v1.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "memory": {
+          "description": "Job Object memory cap, for example `\"256MB\"`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "needs": {
+          "description": "Services that must be healthy before this one starts.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "port": {
+          "description": "Fixed port or `\"auto\"`.",
+          "$ref": "#/$defs/Port",
+          "default": "auto"
+        },
+        "restart": {
+          "description": "Restart policy.",
+          "$ref": "#/$defs/RestartPolicy",
+          "default": "on-failure"
+        },
+        "route": {
+          "description": "Reverse-proxy hostname, for example `shop.localhost`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run": {
+          "description": "Arbitrary command to run. Mutually exclusive with `use`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "seed": {
+          "description": "Seed script run once after the first healthy start.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "use": {
+          "description": "Registry reference (`postgres@16`) for a managed package.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "watch": {
+          "description": "Phase-2 watch paths. Parsed and accepted in v1.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
