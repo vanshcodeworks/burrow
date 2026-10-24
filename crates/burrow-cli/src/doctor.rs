@@ -425,6 +425,23 @@ fn short_hash(hash: &str) -> String {
     hash.chars().take(12).collect()
 }
 
+fn missing_generated_secrets<'a>(
+    document: &serde_json::Value,
+    services: impl Iterator<Item = &'a String>,
+) -> Vec<String> {
+    services
+        .filter(|name| {
+            document
+                .get("secrets")
+                .and_then(|value| value.as_object())
+                .and_then(|secrets| secrets.get(name.as_str()))
+                .and_then(|value| value.as_str())
+                .is_none()
+        })
+        .cloned()
+        .collect()
+}
+
 fn secrets_check(project: &Project, checks: &mut Vec<Check>) {
     let path = project.burrow_dir.join("secrets");
     let contents = match std::fs::read_to_string(&path) {
@@ -463,18 +480,7 @@ fn secrets_check(project: &Project, checks: &mut Vec<Check>) {
         }
     };
 
-    let missing = project
-        .config
-        .services
-        .keys()
-        .filter(|name| {
-            parsed
-                .get(name.as_str())
-                .and_then(|value| value.as_str())
-                .is_none()
-        })
-        .cloned()
-        .collect::<Vec<_>>();
+    let missing = missing_generated_secrets(&parsed, project.config.services.keys());
     if missing.is_empty() {
         checks.push(Check::new(
             "secrets",
@@ -813,7 +819,42 @@ fn single_line(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{single_line, Check, CheckStatus};
+    use super::{missing_generated_secrets, single_line, Check, CheckStatus};
+
+    #[test]
+    fn generated_secrets_are_read_from_the_nested_object() {
+        let document = serde_json::json!({
+            "version": 0,
+            "secrets": {
+                "api": "secret",
+                "db": "secret"
+            }
+        });
+        let services = ["api".to_owned(), "db".to_owned()];
+        assert!(missing_generated_secrets(&document, services.iter()).is_empty());
+    }
+
+    #[test]
+    fn missing_or_non_string_secrets_are_reported() {
+        let document = serde_json::json!({
+            "version": 0,
+            "secrets": {
+                "api": "secret",
+                "db": 42
+            },
+            "worker": "not a service secret"
+        });
+        let services = [
+            "api".to_owned(),
+            "db".to_owned(),
+            "worker".to_owned(),
+            "cache".to_owned(),
+        ];
+        assert_eq!(
+            missing_generated_secrets(&document, services.iter()),
+            ["db".to_owned(), "worker".to_owned(), "cache".to_owned()]
+        );
+    }
 
     #[test]
     fn human_status_labels_are_stable() {
