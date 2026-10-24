@@ -1,0 +1,20 @@
+# Node.js API + PostgreSQL
+#
+# Install dependencies once with `npm install`, then run `burrow up`.
+# The database is downloaded into Burrow's shared cache on first start.
+
+[project]
+name = "node-postgres"
+
+[services.db]
+use = "postgres@16"
+memory = "256MB"
+seed = "db/seed.sql"
+
+[services.api]
+run = "node server.js"
+needs = ["db"]
+env = { DATABASE_URL = "{{db.url}}", PORT = "{{api.port}}" }
+health = { http = "/health", timeout = "120s", interval = "300ms" }
+restart = "on-failure"
+route = "api.localhost"

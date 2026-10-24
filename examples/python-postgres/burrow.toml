@@ -1,0 +1,20 @@
+# Python FastAPI + PostgreSQL
+#
+# Create and activate a virtual environment, install requirements.txt, then
+# run `burrow up` from that activated shell.
+
+[project]
+name = "python-postgres"
+
+[services.db]
+use = "postgres@16"
+memory = "256MB"
+seed = "db/seed.sql"
+
+[services.api]
+run = "python -m uvicorn main:app --host 127.0.0.1 --port {{api.port}}"
+needs = ["db"]
+env = { DATABASE_URL = "{{db.url}}", PORT = "{{api.port}}" }
+health = { http = "/health", timeout = "120s", interval = "300ms" }
+restart = "on-failure"
+route = "api.localhost"

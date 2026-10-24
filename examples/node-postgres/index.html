@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Burrow · Node + PostgreSQL</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font: 16px/1.5 system-ui, sans-serif; max-width: 42rem; margin: 4rem auto; padding: 0 1rem; }
+      code { background: color-mix(in srgb, currentColor 10%, transparent); padding: 0.1em 0.35em; border-radius: 0.25rem; }
+      li { margin: 0.25rem 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Burrow is running</h1>
+    <p>
+      This page came from a native Node.js process, and the rows below came
+      from a native PostgreSQL process. Both were started by
+      <code>burrow up</code>.
+    </p>
+    <h2>Todos</h2>
+    <ul>{{todos}}</ul>
+    <p><code>GET /api/todos</code> returns the same rows as JSON.</p>
+  </body>
+</html>

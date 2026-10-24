@@ -1,0 +1,16 @@
+{
+  "name": "burrow-example-node-postgres",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A tiny Node.js API backed by PostgreSQL, managed by Burrow.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "pg": "8.23.1"
+  }
+}

@@ -9,6 +9,12 @@ todo.md
 .burrow/
 burrow.local.toml
 
+# Example dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
 # Editors
 .idea/
 .vscode/
