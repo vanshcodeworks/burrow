@@ -13,8 +13,8 @@ use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result};
-use crate::win::{self, Job, ProcessHandle, SpawnRequest};
-
+use crate::logs::{LogRing, LogWriter, DEFAULT_LOG_MAX_BYTES, DEFAULT_RING_CAPACITY};
+use crate::win::{self, Job, JobStats, ProcessHandle, SpawnRequest};
 const EMPTY_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
 const FORCE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -23,7 +23,7 @@ const FORCE_TIMEOUT: Duration = Duration::from_secs(5);
 ///
 /// Use the builder methods rather than constructing this directly, so defaults
 /// stay consistent.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct ProcessSpec {
     /// Human-readable service name. Used in logs and thread names.
     pub name: String,
@@ -41,6 +41,13 @@ pub struct ProcessSpec {
     pub cpu_limit_percent: Option<u8>,
     /// How long to wait after `CTRL_BREAK` before terminating the tree.
     pub grace_period: Duration,
+    /// Directory for rotating per-service log files. `None` disables files.
+    pub log_dir: Option<PathBuf>,
+    /// Rotate a service log file once it reaches this size.
+    pub log_max_bytes: u64,
+    /// Optional ring shared across restarts. A private ring is created when
+    /// omitted.
+    pub log_ring: Option<Arc<LogRing>>,
 }
 
 impl ProcessSpec {
@@ -55,6 +62,9 @@ impl ProcessSpec {
             memory_limit: None,
             cpu_limit_percent: None,
             grace_period: Duration::from_secs(5),
+            log_dir: None,
+            log_max_bytes: DEFAULT_LOG_MAX_BYTES,
+            log_ring: None,
         }
     }
 
@@ -103,6 +113,24 @@ impl ProcessSpec {
         self.grace_period = period;
         self
     }
+
+    /// Writes captured output to rotating files in `directory`.
+    pub fn log_dir(mut self, directory: impl Into<PathBuf>) -> Self {
+        self.log_dir = Some(directory.into());
+        self
+    }
+
+    /// Sets the log rotation threshold.
+    pub fn log_max_bytes(mut self, bytes: u64) -> Self {
+        self.log_max_bytes = bytes;
+        self
+    }
+
+    /// Shares a log ring that survives this process instance.
+    pub fn log_ring(mut self, ring: Arc<LogRing>) -> Self {
+        self.log_ring = Some(ring);
+        self
+    }
 }
 
 /// What happened during [`ManagedProcess::shutdown`].
@@ -142,6 +170,7 @@ pub struct ManagedProcess {
     spec: ProcessSpec,
     process: Arc<ProcessHandle>,
     exit: watch::Receiver<Option<ExitStatus>>,
+    logs: Arc<LogRing>,
 }
 
 impl ManagedProcess {
@@ -170,6 +199,22 @@ impl ManagedProcess {
         let stderr = tokio::fs::File::from_std(spawned.stderr);
         let process = Arc::new(spawned.process);
 
+        let logs = spec
+            .log_ring
+            .clone()
+            .unwrap_or_else(|| Arc::new(LogRing::new(DEFAULT_RING_CAPACITY)));
+        let writer = spec
+            .log_dir
+            .as_deref()
+            .map(|directory| {
+                LogWriter::open(directory, &spec.name, spec.log_max_bytes, Arc::clone(&logs))
+            })
+            .transpose()
+            .map_err(|error| Error::LogFile {
+                service: spec.name.clone(),
+                source: error,
+            })?;
+
         let (exit_tx, exit) = watch::channel::<Option<ExitStatus>>(None);
         let waiter = Arc::clone(&process);
         let wait_name = spec.name.clone();
@@ -189,12 +234,13 @@ impl ManagedProcess {
         // detached deliberately: a service may exit while a grandchild keeps a
         // pipe open, and shutdown must not wait for that.
         let stdout_name = spec.name.clone();
+        let stdout_writer = writer.clone();
         tokio::spawn(async move {
-            forward_output(stdout, stdout_name, "stdout").await;
+            forward_output(stdout, stdout_name, "stdout", stdout_writer).await;
         });
         let stderr_name = spec.name.clone();
         tokio::spawn(async move {
-            forward_output(stderr, stderr_name, "stderr").await;
+            forward_output(stderr, stderr_name, "stderr", writer).await;
         });
 
         debug!(service = %spec.name, pid, "process started");
@@ -203,6 +249,7 @@ impl ManagedProcess {
             spec,
             process,
             exit,
+            logs,
         })
     }
 
@@ -219,6 +266,16 @@ impl ManagedProcess {
     /// Returns the exit status if the process has already exited.
     pub fn try_wait(&self) -> Option<ExitStatus> {
         *self.exit.borrow()
+    }
+
+    /// The captured log ring for this service.
+    pub fn logs(&self) -> &Arc<LogRing> {
+        &self.logs
+    }
+
+    /// Samples memory and CPU usage for the whole job.
+    pub fn stats(&self) -> Result<JobStats> {
+        self.job.stats()
     }
 
     /// Waits for the direct child to exit.
@@ -334,8 +391,12 @@ impl ManagedProcess {
     }
 }
 
-async fn forward_output<R>(reader: R, service: String, stream: &'static str)
-where
+async fn forward_output<R>(
+    reader: R,
+    service: String,
+    stream: &'static str,
+    writer: Option<LogWriter>,
+) where
     R: AsyncRead + Unpin,
 {
     let mut lines = BufReader::new(reader);
@@ -350,6 +411,9 @@ where
                 }
                 let line = String::from_utf8_lossy(&buffer);
                 info!(target: "burrow::service", service = %service, stream = stream, "{line}");
+                if let Some(writer) = &writer {
+                    writer.write_line(stream, &line);
+                }
             }
             Err(error) => {
                 debug!(service = %service, stream = stream, %error, "log stream ended with an error");

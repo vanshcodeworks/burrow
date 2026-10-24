@@ -15,11 +15,12 @@ use std::os::windows::ffi::OsStrExt;
 use std::os::windows::io::FromRawHandle;
 use std::path::{Path, PathBuf};
 use std::ptr;
+use std::time::Duration;
 
 use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::Foundation::{
-    CloseHandle, GetLastError, SetHandleInformation, ERROR_INSUFFICIENT_BUFFER, GENERIC_READ,
-    HANDLE, HANDLE_FLAGS, HANDLE_FLAG_INHERIT, WAIT_OBJECT_0, WIN32_ERROR,
+    CloseHandle, GetLastError, SetHandleInformation, ERROR_INSUFFICIENT_BUFFER, FILETIME,
+    GENERIC_READ, HANDLE, HANDLE_FLAGS, HANDLE_FLAG_INHERIT, WAIT_OBJECT_0, WIN32_ERROR,
 };
 use windows::Win32::Security::SECURITY_ATTRIBUTES;
 use windows::Win32::Storage::FileSystem::{
@@ -27,21 +28,25 @@ use windows::Win32::Storage::FileSystem::{
 };
 use windows::Win32::System::Console::{GenerateConsoleCtrlEvent, CTRL_BREAK_EVENT};
 use windows::Win32::System::JobObjects::{
-    CreateJobObjectW, JobObjectBasicAccountingInformation, JobObjectCpuRateControlInformation,
-    JobObjectExtendedLimitInformation, QueryInformationJobObject, SetInformationJobObject,
-    TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JOBOBJECT_BASIC_LIMIT_INFORMATION,
-    JOBOBJECT_CPU_RATE_CONTROL_INFORMATION, JOBOBJECT_CPU_RATE_CONTROL_INFORMATION_0,
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_CPU_RATE_CONTROL_ENABLE,
-    JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP, JOB_OBJECT_LIMIT_JOB_MEMORY,
-    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_PROCESS_MEMORY,
+    CreateJobObjectW, JobObjectBasicAccountingInformation, JobObjectBasicProcessIdList,
+    JobObjectCpuRateControlInformation, JobObjectExtendedLimitInformation,
+    QueryInformationJobObject, SetInformationJobObject, TerminateJobObject,
+    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JOBOBJECT_BASIC_LIMIT_INFORMATION,
+    JOBOBJECT_BASIC_PROCESS_ID_LIST, JOBOBJECT_CPU_RATE_CONTROL_INFORMATION,
+    JOBOBJECT_CPU_RATE_CONTROL_INFORMATION_0, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    JOB_OBJECT_CPU_RATE_CONTROL_ENABLE, JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP,
+    JOB_OBJECT_LIMIT_JOB_MEMORY, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    JOB_OBJECT_LIMIT_PROCESS_MEMORY,
 };
 use windows::Win32::System::Pipes::CreatePipe;
+use windows::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
 use windows::Win32::System::Threading::{
-    CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
-    InitializeProcThreadAttributeList, UpdateProcThreadAttribute, WaitForSingleObject,
+    CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess, GetProcessTimes,
+    InitializeProcThreadAttributeList, OpenProcess, UpdateProcThreadAttribute, WaitForSingleObject,
     CREATE_NEW_PROCESS_GROUP, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
-    LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-    PROC_THREAD_ATTRIBUTE_JOB_LIST, STARTF_USESTDHANDLES, STARTUPINFOEXW, STARTUPINFOW,
+    LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
+    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_JOB_LIST, STARTF_USESTDHANDLES,
+    STARTUPINFOEXW, STARTUPINFOW,
 };
 
 use crate::error::{Error, Result};
@@ -174,6 +179,149 @@ impl Job {
         .map_err(|source| windows_error("QueryInformationJobObject", source))?;
         Ok(accounting.ActiveProcesses)
     }
+
+    /// Samples working-set memory and CPU time for every process in the job.
+    ///
+    /// Processes that exit between enumeration and measurement are skipped;
+    /// the sample is best-effort by design and must never fail a status query.
+    pub(crate) fn stats(&self) -> Result<JobStats> {
+        let pids = self.process_ids()?;
+        let mut working_set = 0u64;
+        let mut cpu_ticks = 0u64;
+
+        for pid in &pids {
+            // SAFETY: OpenProcess takes a process id and returns an owned handle
+            // or an error. The handle is closed exactly once below.
+            let Ok(handle) =
+                (unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, *pid) })
+            else {
+                continue;
+            };
+
+            let mut counters = PROCESS_MEMORY_COUNTERS {
+                cb: size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+                ..Default::default()
+            };
+            // SAFETY: `handle` has query access, `counters.cb` is the structure
+            // size, and the out-pointer is valid for the duration of the call.
+            let measured = unsafe {
+                K32GetProcessMemoryInfo(
+                    handle,
+                    &mut counters,
+                    size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+                )
+            };
+            if measured.as_bool() {
+                working_set = working_set.saturating_add(counters.WorkingSetSize as u64);
+            }
+
+            let mut creation = FILETIME::default();
+            let mut exit = FILETIME::default();
+            let mut kernel = FILETIME::default();
+            let mut user = FILETIME::default();
+            // SAFETY: the handle has query access and all four out-pointers
+            // reference initialized FILETIME values.
+            if unsafe { GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user) }
+                .is_ok()
+            {
+                cpu_ticks = cpu_ticks
+                    .saturating_add(filetime_ticks(kernel))
+                    .saturating_add(filetime_ticks(user));
+            }
+
+            // SAFETY: this handle was returned by OpenProcess and is owned by
+            // this loop iteration.
+            unsafe {
+                let _ = CloseHandle(handle);
+            }
+        }
+
+        Ok(JobStats {
+            working_set_bytes: working_set,
+            cpu_time: Duration::from_nanos(cpu_ticks.saturating_mul(100)),
+            active_processes: pids.len() as u32,
+        })
+    }
+
+    fn process_ids(&self) -> Result<Vec<u32>> {
+        let header = size_of::<JOBOBJECT_BASIC_PROCESS_ID_LIST>() - size_of::<usize>();
+        let assigned = self.active_processes().unwrap_or(0) as usize;
+        let mut capacity = (assigned + 8).clamp(16, 65_536);
+
+        for _ in 0..3 {
+            let words = (header + capacity * size_of::<usize>()).div_ceil(size_of::<usize>());
+            let mut buffer = vec![0usize; words];
+            let list = buffer
+                .as_mut_ptr()
+                .cast::<JOBOBJECT_BASIC_PROCESS_ID_LIST>();
+            // SAFETY: `buffer` is usize-aligned and large enough for the header
+            // plus `capacity` pid slots. The header fields are u32 and the buffer
+            // is zero-initialized; only `NumberOfProcessIdsInList` is set.
+            unsafe {
+                (*list).NumberOfProcessIdsInList = capacity as u32;
+            }
+
+            let mut returned = 0u32;
+            // SAFETY: the information class expects a JOBOBJECT_BASIC_PROCESS_ID_LIST
+            // and the buffer is sized for `capacity` entries.
+            let query = unsafe {
+                QueryInformationJobObject(
+                    Some(self.handle),
+                    JobObjectBasicProcessIdList,
+                    list.cast(),
+                    (buffer.len() * size_of::<usize>()) as u32,
+                    Some(&mut returned),
+                )
+            };
+            if let Err(source) = query {
+                capacity = (capacity * 2).min(65_536);
+                if capacity == 65_536 && returned != 0 {
+                    return Err(windows_error(
+                        "QueryInformationJobObject(process list)",
+                        source,
+                    ));
+                }
+                continue;
+            }
+
+            // SAFETY: QueryInformationJobObject initialized the header and at
+            // most `capacity` entries in `buffer`.
+            let (assigned, listed) = unsafe {
+                let header = ptr::read_unaligned(list);
+                (
+                    header.NumberOfAssignedProcesses,
+                    header.NumberOfProcessIdsInList,
+                )
+            };
+            let count = (listed as usize).min(capacity);
+            let ids = unsafe {
+                let base = list.cast::<u8>().add(header).cast::<usize>();
+                std::slice::from_raw_parts(base, count)
+            };
+            if assigned as usize > count && capacity < 65_536 {
+                capacity = (assigned as usize).min(65_536);
+                continue;
+            }
+            return Ok(ids.iter().map(|id| *id as u32).collect());
+        }
+
+        Ok(Vec::new())
+    }
+}
+
+fn filetime_ticks(value: FILETIME) -> u64 {
+    (u64::from(value.dwHighDateTime) << 32) | u64::from(value.dwLowDateTime)
+}
+
+/// A best-effort sample of one job's resource usage.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct JobStats {
+    /// Sum of the working sets of all processes still in the job.
+    pub working_set_bytes: u64,
+    /// Total user and kernel CPU time consumed by the job.
+    pub cpu_time: Duration,
+    /// Number of processes measured.
+    pub active_processes: u32,
 }
 
 impl Drop for Job {
@@ -263,12 +411,13 @@ pub(crate) fn spawn_in_job(job: &Job, request: &SpawnRequest) -> Result<SpawnedP
         request.cwd.as_deref(),
         &request.env,
     );
+    let (resolved_program, request_args) = wrap_script(&resolved_program, &request.args);
     let program_wide = wide_null(resolved_program.as_os_str());
     if has_interior_nul(&program_wide) {
         return Err(Error::InvalidSpec("program path contains a NUL character"));
     }
 
-    let mut command_line = build_command_line(resolved_program.as_os_str(), &request.args);
+    let mut command_line = build_command_line(resolved_program.as_os_str(), &request_args);
     if has_interior_nul(&command_line) {
         return Err(Error::InvalidSpec("arguments contain a NUL character"));
     }
@@ -627,14 +776,44 @@ fn resolve_program(
             return candidate;
         }
         if !has_extension {
-            let with_exe = candidate.with_extension("exe");
-            if with_exe.is_file() {
-                return with_exe;
+            for extension in ["exe", "cmd", "bat"] {
+                let with_extension = candidate.with_extension(extension);
+                if with_extension.is_file() {
+                    return with_extension;
+                }
             }
         }
     }
 
     program_path.to_path_buf()
+}
+
+/// Batch files cannot be started by `CreateProcessW` directly. Run them through
+/// the command interpreter, preserving the original command line.
+fn wrap_script(program: &Path, args: &[OsString]) -> (PathBuf, Vec<OsString>) {
+    let is_script = program
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("cmd") || extension.eq_ignore_ascii_case("bat")
+        });
+    if !is_script {
+        return (program.to_path_buf(), args.to_vec());
+    }
+
+    let mut command_line = build_command_line(program.as_os_str(), args);
+    command_line.pop();
+    let inner = String::from_utf16_lossy(&command_line);
+    let interpreter = std::env::var_os("COMSPEC").unwrap_or_else(|| OsString::from("cmd.exe"));
+    (
+        PathBuf::from(interpreter),
+        vec![
+            OsString::from("/D"),
+            OsString::from("/S"),
+            OsString::from("/C"),
+            OsString::from(inner),
+        ],
+    )
 }
 
 /// Builds a Windows command line using the `CommandLineToArgvW` quoting rules.
@@ -738,7 +917,9 @@ fn build_environment(overrides: &BTreeMap<OsString, OsString>) -> Option<Vec<u16
 
 #[cfg(test)]
 mod tests {
-    use super::{append_quoted, build_command_line, build_environment, resolve_program};
+    use super::{
+        append_quoted, build_command_line, build_environment, resolve_program, wrap_script,
+    };
     use std::collections::BTreeMap;
     use std::ffi::{OsStr, OsString};
     use std::path::{Path, PathBuf};
@@ -855,5 +1036,28 @@ mod tests {
             &BTreeMap::new(),
         );
         assert_eq!(resolved, PathBuf::from(r"C:\project\bin\app.exe"));
+    }
+
+    #[test]
+    fn cmd_shims_are_found_on_path_and_wrapped() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let shim = temp.path().join("burrow-fake-npm.cmd");
+        std::fs::write(&shim, b"@echo off\r\n").expect("write shim");
+
+        let mut env = BTreeMap::new();
+        env.insert(
+            OsString::from("PATH"),
+            temp.path().as_os_str().to_os_string(),
+        );
+        let resolved = resolve_program(OsStr::new("burrow-fake-npm"), None, &env);
+        assert_eq!(resolved, shim);
+
+        let (program, args) =
+            wrap_script(&resolved, &[OsString::from("run"), OsString::from("dev")]);
+        assert!(program
+            .file_name()
+            .is_some_and(|name| name.eq_ignore_ascii_case("cmd.exe")));
+        assert_eq!(args[0], OsString::from("/D"));
+        assert!(args[3].to_string_lossy().contains("run dev"));
     }
 }

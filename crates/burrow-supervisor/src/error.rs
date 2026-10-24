@@ -31,6 +31,16 @@ pub enum Error {
     #[error("could not start the process wait thread: {0}")]
     WaitThread(#[source] std::io::Error),
 
+    /// A per-service log file could not be opened.
+    #[error("could not open the log file for `{service}`: {source}")]
+    LogFile {
+        /// Service name.
+        service: String,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
     /// The wait thread stopped without reporting an exit status.
     #[error("the process wait channel closed without an exit status")]
     WaitClosed,
