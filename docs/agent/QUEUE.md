@@ -33,7 +33,7 @@
       FAQ. Docker Compose was measured separately; the other tools were not run.
 - [x] **Reproducible benchmark suite vs Docker Compose where available**
       (tracked as E3 below): `scripts/benchmark-stacks.ps1` measured both stacks
-      on 2026-10-25 with the same example and `/api/todos` endpoint, recorded
+      on 2026-10-25 UTC with the same example and `/api/todos` endpoint, recorded
       machine specs and raw data in `docs/benchmarks/2026-10-25-stacks.json`,
       and reports image pull/build separately. Podman remains unavailable and is
       documented as unverified.
@@ -170,7 +170,7 @@
 - [ ] E1 Examples with smoke tests (Next.js+Postgres, FastAPI+Postgres+Mailpit).
 - [ ] E2 Docs site (mdBook) — defer until content settles.
 - [x] E3 (Phase 3-5) Benchmark suite vs Docker Compose: `scripts/benchmark-stacks.ps1`
-      measured both stacks on 2026-10-25; raw JSON is
+      measured both stacks on 2026-10-25 UTC; raw JSON is
       `docs/benchmarks/2026-10-25-stacks.json`. Podman remains unavailable and
       is stated as unverified rather than inferred.
 - [ ] E5 CLI/TUI polish: plain mode audit, narrow terminals.

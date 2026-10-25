@@ -68,7 +68,7 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | Claim | Evidence | Status |
 | --- | --- | --- |
 | Snapshot/restore/list/reset with atomic directory operations | `snapshot.rs` tests (name escape rejected, round trip incl. absent services, duplicates/unknown errors, temp dirs not listed); CLI `snapshots_restore_data_atomically_and_reset_removes_it` | verified |
-| Benchmarks with real measurements and machine specs | `docs/benchmarks.md`: real table (cold 61.35 s / warm 1.87 s, RSS), machine spec, reproduction scripts; a 2026-10-25 Docker Compose 24.0.7 head-to-head (cold data 10.7 s, warm 1.84-1.88 s, Compose 4.11 s / 1.92-3.20 s) with raw JSON in `docs/benchmarks/2026-10-25-stacks.json` | verified (one machine, small sample) |
+| Benchmarks with real measurements and machine specs | `docs/benchmarks.md`: real table (cold 61.35 s / warm 1.87 s, RSS), machine spec, reproduction scripts; a 2026-10-25 UTC Docker Compose 24.0.7 head-to-head (cold data 10.7 s, warm 1.84-1.88 s, Compose 4.11 s / 1.92-3.20 s) with raw JSON in `docs/benchmarks/2026-10-25-stacks.json` | verified (one machine, small sample; API build warm-cache; order and init flags caveated) |
 | Two runnable examples | `examples/node-postgres`, `examples/python-postgres` with READMEs; node example exercised during phase-2 registry work (healthy); **no automated example smoke test in CI** | observed (gap queued E1) |
 | Full user documentation | `docs/`: getting-started, config-reference, registry, security, troubleshooting, FAQ, CLI, demo — updated this run for phase 2 | verified |
 | Release pipeline, `cargo install` support, winget/Scoop drafts | `.github/workflows/release.yml` + `packaging/`; README documents `cargo install --path ... --locked` (used to build locally during this run, equivalent source build); winget manifest is a draft placeholder by design | verified (drafts marked as drafts) |
@@ -128,7 +128,7 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | --- | --- | --- |
 | Every competitor claim in the landscape is tied to an official source with a retrieval date | `docs/comparisons/SOURCES.md` has 16 competitor sources (S1-S16), each with a URL and `2026-10-26`; `docs/comparisons/README.md` cites them as `[S1]`-`[S16]` | verified by source review |
 | The comparison states where each alternative is the better fit | Every tool section has a "Where it is a better fit than Burrow" subsection; `Where Burrow is the wrong choice` lists the boundary cases | verified by review |
-| Competitor performance claims are limited to the measured Docker Compose run | `Performance: what is measured and what is not` reports Burrow numbers from `docs/benchmarks.md` and the 2026-10-25 Compose head-to-head, with method and caveats; no other competitor has a performance number | verified by review |
+| Competitor performance claims are limited to the measured Docker Compose run | `Performance: what is measured and what is not` reports Burrow numbers from `docs/benchmarks.md` and the 2026-10-25 UTC Compose head-to-head, with method and caveats; no other competitor has a performance number | verified by review |
 | Only Docker Compose was run; the rest of the comparison is documentation-based | The method statement says one benchmark was run; Docker Desktop 24.0.7 + Compose v2.23.3-desktop.2 produced `docs/benchmarks/2026-10-25-stacks.json`. Podman and the other tools were not run | observed (scope limit) |
 | The FAQ points readers at the comparison, not at `benchmarks.md` | `docs/faq.md` "Is Burrow a Docker replacement?" links `comparisons/README.md`, `benchmarks.md`, and `security.md` | verified by inspection |
 
@@ -139,7 +139,7 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
    snapshot; positive control via `burrow env <service>`.
 2. E1 automated example smoke tests in CI (M6).
 3. ~~E3 Docker Compose comparison measurement~~ **closed**: a reproducible
-   `scripts/benchmark-stacks.ps1` run on 2026-10-25 measured both stacks to
+   `scripts/benchmark-stacks.ps1` run on 2026-10-25 UTC measured both stacks to
    HTTP 200 with raw JSON; see `docs/benchmarks.md`. Podman parity remains open
    (C13).
 4. E5 end-to-end TUI session test (M5 covered by unit tests only).

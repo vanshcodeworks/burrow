@@ -3,48 +3,49 @@
 ## Current focus
 
 Phase 3-5 launch content is underway. The sourced landscape/comparisons page and
-a reproducible Docker Compose head-to-head are complete. Next are packaging,
-trust, and docs-site work (release dry-run, cargo-deny/SBOM, signing plan,
-winget/Scoop drafts, E2), then launch-kit drafts. Phase 1 still needs a true
-clean-machine pass and a CI execution of the compatibility probe. Do not write
-`docs/agent/LAUNCH_READINESS.md` until those and the human-only launch steps are
-resolved.
+the reproducible Docker Compose head-to-head are complete and have had a skeptic
+review. Next are packaging, trust, and docs-site work (release dry-run,
+cargo-deny/SBOM, signing plan, winget/Scoop drafts, E2), then launch-kit drafts.
+Phase 1 still needs a true clean-machine pass and a CI execution of the
+compatibility probe. Do not write `docs/agent/LAUNCH_READINESS.md` until those
+and the human-only launch steps are resolved.
 
-## Last cycle summary (2026-10-26, cycle 15)
+## Last cycle summary (2026-10-26, cycle 16)
 
-- **Reproducible head-to-head**: added `scripts/benchmark-stacks.ps1`. It
-  generates a Compose fixture that mirrors `examples/node-postgres` (same
-  `server.js`, schema, and seed), measures both stacks from launch until
-  `/api/todos` returns HTTP 200 with the seeded row, and records machine specs.
-  Image pull/build is measured separately and excluded from startup. Cleanup runs
-  in `finally`, and a missing Docker daemon skips the Compose half instead of
-  inventing a number. The only app change is `HOST=0.0.0.0` inside the container
-  so Docker can forward the port; the native example binds loopback.
-- **Measured results** (2026-10-25, raw data in
-  `docs/benchmarks/2026-10-25-stacks.json`): Burrow cold application data
-  **10.7 s**, warm **1.87 / 1.88 / 1.84 s**, daemon working set **10.9-11.0 MB**,
-  whole tree **171.5-172.2 MB**. Compose cold **4.11 s**, warm
-  **3.20 / 1.92 / 2.08 s**, containers **37.2-62.1 MB combined**. Compose image
-  pull **21.57 s**, API build **2.67 s**. PostgreSQL image digest
+- **Skeptic review**: re-read the cycle-15 benchmark claims and corrected three
+  overclaims. The 2.67 s API build is a **warm-cache rebuild**, not a cold build:
+  removing the image does not clear Docker's build-layer cache (the earlier full
+  build was 26.53 s). Compose ran before Burrow with Docker Desktop's VM still
+  running, so measurement order is a possible bias. Burrow's `initdb` uses
+  `-A trust --no-locale` while the Compose image uses its default locale and
+  password auth.
+- **Date clarity**: the run timestamp is `2026-10-25T22:34:13Z`, which is
+  2026-10-26 locally (`en-NZ`). Prose now says **2026-10-25 UTC**.
+- **No numbers changed**: the raw JSON is unchanged; the corrections are
+  disclosure and interpretation. No re-measurement was needed.
+- **No process/temp work**: Docker Desktop remains stopped from the cycle-15
+  cleanup; this was a docs/script-only cycle.
+
+## Benchmark state (2026-10-25 UTC)
+
+- Burrow cold application data **10.7 s**, warm **1.87 / 1.88 / 1.84 s** to
+  HTTP 200; daemon working set **10.9-11.0 MB**; whole tree
+  **171.5-172.2 MB**; services **160.5-161.3 MB**.
+- Docker Compose cold **4.11 s**, warm **3.20 / 1.92 / 2.08 s** to HTTP 200;
+  containers **37.2-62.1 MB combined**; PostgreSQL pull **21.57 s**; API rebuild
+  **2.67 s** (warm cache). PostgreSQL digest
   `sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36`;
   API image 159,806,724 bytes.
-- **Interpretation**: Compose initialized empty application data faster; Burrow
-  was slightly faster and more consistent on warm starts. Container memory is
-  not like-for-like with Burrow's daemon RSS because it excludes Docker
-  Desktop's VM and daemon.
-- **Public docs**: `docs/benchmarks.md` has the method, results, setup times, and
-  caveats; the README benchmark paragraph and fair-comparison table use the
-  measured Compose numbers; the comparison page's performance and resource
-  fairness notes now point to the head-to-head.
-- **Agent docs**: closed E3, marked the Phase 3-5 benchmark item done, removed
-  the Docker head-to-head from `NEEDS_HUMAN.md` (only Podman parity remains),
-  and updated the M6/Phase 3-5 claim rows.
-- **Cleanup**: removed the benchmark images (`postgres:16.15-alpine` and the
-  generated API image), the three benchmark temp directories, and all benchmark
-  containers/volumes; stopped Docker Desktop and its WSL distros. Confirmed no
-  `burrow` processes, port 3000 free, and no benchmark temp directories left.
+- Compose initialized empty application data faster; Burrow was slightly faster
+  and more consistent warm. Container memory is not like-for-like because it
+  excludes Docker Desktop's VM and daemon.
+- Caveats: one Windows 11 Home machine and a small sample; Compose measured
+  first; DB init flags differ; API build warm-cache; only Docker Compose was
+  run; no Podman; no Linux/macOS host. Raw data:
+  `docs/benchmarks/2026-10-25-stacks.json`; method and caveats:
+  `docs/benchmarks.md`.
 
-## Check suite status (cycle 15 full run)
+## Check suite status (cycle 16 full run)
 
 - `cargo fmt --all --check`: **green**.
 - `cargo clippy --workspace --all-targets -- -D warnings`: **green**.
@@ -52,8 +53,10 @@ resolved.
   211 tests / 23 suites**.
 - `cargo audit`: **green** (3 allowed transitive warnings: `paste`
   unmaintained; `lru` unsound x2).
-- `cargo build --workspace --release`: **green in 0.62 s** (no Rust changes;
-  cached artifacts).
+- `cargo build --workspace --release`: **green in 11.45 s** (no Rust changes;
+  recompiled despite cached artifacts).
+- `scripts/benchmark-stacks.ps1` parses cleanly; all Markdown links,
+  `[S1]`-`[S16]` anchors, and the raw JSON validate.
 - `cargo-deny` is still not installed; `cargo audit` is the dependency gate.
 - Fuzz targets are excluded from the workspace; see `fuzz/README.md`.
 
@@ -72,7 +75,7 @@ resolved.
   on `PATH` (`clang_rt.asan-dynamic-x86_64.dll`).
 - Docker Desktop 24.0.7 / Compose v2.23.3-desktop.2 were used for the
   head-to-head on WSL 2 kernel 6.18.54.1-microsoft-standard-WSL2 (16 CPUs,
-  7.469 GiB). Docker Desktop is stopped now; Podman is absent.
+  7.469 GiB). Docker Desktop is stopped; Podman is absent.
 - cargo-audit 0.22.2 installed locally and working.
 - Git Bash quirk: `taskkill //PID` on the command line; normal `/PID` args
   inside Rust Command.
@@ -93,6 +96,7 @@ a Linux ASan run remain. Property tests do not model concurrent allocator
 processes or real crashes. Volume-GUID project paths are not handled.
 
 The comparison page is documentation-based except for Docker Compose: only
-Compose was run, and only on one Windows 11 machine with a small sample. Compose
-container memory excludes Docker Desktop's VM and daemon. Competitor docs can
+Compose was run, on one Windows 11 machine with a small sample. Compose
+container memory excludes Docker Desktop's VM and daemon. A cold API image build
+was not measured, and measurement order is not randomized. Competitor docs can
 change; the source ledger must be updated with the claim.

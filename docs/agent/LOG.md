@@ -715,7 +715,8 @@ v2.23.3-desktop.2, WSL 2 kernel 6.18.54.1-microsoft-standard-WSL2, 16 CPUs,
 
 The only app change is `HOST=0.0.0.0` inside the container so Docker can forward
 the port; the native example binds loopback. The final clean run removed the
-benchmark images first so the pull/build setup times were real.
+benchmark images first so the PostgreSQL pull was measured again; the API
+rebuild reused Docker's layer cache, so its 2.67 s is not a cold-build time.
 
 **Results** (2026-10-25T22:34:13Z, raw data in
 `docs/benchmarks/2026-10-25-stacks.json`):
@@ -768,7 +769,58 @@ processes and port 3000 free.
 **Not verified**: one Windows 11 Home machine and a small sample, not a
 statistical distribution. Only Docker Compose was run; Podman and every other
 competitor remain documentation-based. Compose container memory excludes Docker
-Desktop's VM and daemon. No clean-machine, Windows 10, ARM64, or CI run.
+Desktop's VM and daemon. The API build time is a warm-cache rebuild, not a cold
+build. Compose ran before Burrow, so measurement order is not randomized. The
+database init flags differ (`-A trust --no-locale` versus the image defaults).
+No clean-machine, Windows 10, ARM64, or CI run.
+
+**Next**: packaging/trust/docs-site work (release dry-run, cargo-deny/SBOM,
+signing plan, winget/Scoop drafts, E2), then launch-kit drafts. Do not write
+`LAUNCH_READINESS.md` until the Phase 1 blockers and human-only launch steps are
+resolved.
+
+## 2026-10-26 - cycle 16: skeptic review of the head-to-head
+
+**Task**: Re-read the cycle-15 benchmark and its public claims as a skeptic
+before building more launch material.
+
+**Findings and fixes**:
+
+- **Build time was mislabeled.** The final API rebuild took **2.67 s**, while
+  the earlier full build took **26.53 s** with `npm ci` at 7.7 s. Removing the
+  API image does not clear Docker's build-layer cache, so 2.67 s is a
+  warm-cache rebuild, not a cold build. `docs/benchmarks.md` and the script's
+  notes now say this; the raw JSON is unchanged.
+- **Measurement order was not randomized.** The harness runs all Compose samples
+  before the Burrow samples, and Docker Desktop's VM stays running. This is now
+  a documented possible source of bias, not a claimed neutral ordering.
+- **Database init flags differ.** Burrow's registry uses
+  `initdb -A trust --no-locale` and binds loopback; the Compose image uses its
+  default locale and password auth. The docs now state this instead of implying
+  a byte-for-byte database comparison.
+- **Date ambiguity.** The run timestamp is `2026-10-25T22:34:13Z`, which is
+  2026-10-26 in the local `en-NZ` timezone. Public and agent prose now labels the
+  benchmark **2026-10-25 UTC**.
+- No numbers changed and no re-measurement was needed; these are corrections to
+  interpretation and disclosure.
+
+**Commands and real results**:
+
+- `cargo fmt --all --check` - green.
+- `cargo clippy --workspace --all-targets -- -D warnings` - green.
+- `cargo test --workspace --all-targets -- --test-threads=1` -
+  **211 passed, 0 failed across 23 suites**.
+- `cargo audit` - green, 3 allowed transitive warnings (`paste` unmaintained;
+  `lru` unsound x2).
+- `cargo build --workspace --release` - green in 11.45 s (no Rust changes;
+  recompiled despite cached artifacts).
+- `scripts/benchmark-stacks.ps1` parses cleanly under the PowerShell parser.
+- All Markdown links and `[S1]`-`[S16]` anchors resolve; the raw JSON parses.
+
+**Not verified**: a cold API image build was not measured. Compose/Burrow
+measurement order is not randomized. Only Docker Compose was run; Podman and the
+other competitors remain documentation-based. One machine and a small sample;
+no clean-machine, Windows 10, ARM64, or CI run.
 
 **Next**: packaging/trust/docs-site work (release dry-run, cargo-deny/SBOM,
 signing plan, winget/Scoop drafts, E2), then launch-kit drafts. Do not write
