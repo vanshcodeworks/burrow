@@ -56,8 +56,14 @@
       crash, timeout, or artifact. Seeds are committed in `fuzz/seeds/`;
       prerequisites (nightly, `cargo-fuzz`, the Windows ASan DLL) and the
       target table are in `fuzz/README.md`.
-- [ ] **A4 Property tests**: port allocator stability/collision-freedom,
-      atomic dir ops, template resolution (extend existing proptest suite).
+- [x] **A4 Property tests**: `burrow-net` proves automatic ports are unique,
+      in range, remembered across save/load, and that reserved/pinned ports are
+      never handed out; `burrow-data` round-trips generated file trees through
+      snapshot/restore and asserts the manifest counts and that no staging,
+      backup, or temporary directory remains; `burrow-config` covers plain-text
+      identity, substitution with surrounding text, unclosed/unknown-variable
+      errors, and that resolution preserves template-free values. Eight
+      properties, **1,840 generated cases**, all green.
 - [ ] **A5 Compatibility matrix doc**: Win10/11, non-ASCII paths, long paths,
       spaces, OneDrive dirs, non-admin. Manual test script + docs page.
 - [ ] **A6 Crash safety**: `burrow doctor --report` bundle (redacted);

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 57297dafc02cfbff34fcd2e1dcc92f984033e47a274538324d18e0af57196f99 # shrinks to services = {"svc": Some({"f": [], "f/d": []})}

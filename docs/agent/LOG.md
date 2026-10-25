@@ -327,3 +327,65 @@ both readers call before writing, not the archive container parsers.
 **Next**: A4 property tests (port allocator, atomic directory operations,
 template resolution), then A6 `doctor --report` and the Phase 1 compatibility
 matrix.
+
+## 2026-10-26 - cycle 10: property tests for ports, snapshots, and templates (A4)
+
+**Task**: Extend the adversarial suite with property tests for the port
+allocator, atomic snapshot/restore directory operations, and template
+resolution.
+
+**Outcome**: Eight properties covering **1,840 generated cases** pass. One
+generator bug was found and fixed; no product bug was found.
+
+**Properties and real results**:
+
+- `crates/burrow-net/tests/properties.rs` - 2 properties x 256 cases:
+  - automatic ports are unique across services and inside
+    40000-49999;
+  - re-allocating an unchanged service returns the remembered port;
+  - `save`/`load` preserves every assignment and leaves no `ports.json.tmp`;
+  - a reserved port is never handed out, and a pinned service keeps its port.
+- `crates/burrow-data/tests/properties.rs` - 1 property x 48 cases:
+  - generated file trees round-trip through `create_snapshot` and
+    `restore_snapshot`;
+  - manifest file and byte counts match the generated tree;
+  - a file added after the snapshot does not survive the restore;
+  - a service recorded as absent stays absent;
+  - no `.burrow-restore-*`, `.burrow-backup-*`, or `.burrow-tmp-*` remains.
+- `crates/burrow-config/tests/template_properties.rs` - 5 properties x 256
+  cases:
+  - text without markers is returned unchanged;
+  - a known substitution keeps the surrounding text;
+  - an unclosed marker is an error;
+  - an unknown variable is an error;
+  - `resolve_templates` preserves template-free values.
+
+**Generator bug found**: the first snapshot run failed with
+`create parent directory: Os { code: 183, ... }`. The path strategy could
+generate `f` and `f/d` in the same map, so a file was also its own parent
+directory. This was invalid test input, not a product failure. The strategy now
+uses a flat namespace plus one fixed `nested/` prefix; the rerun passes all 48
+cases.
+
+**Commands and real results**:
+
+- `cargo test -p burrow-net --test properties -- --test-threads=1` -
+  2 passed in 3.38 s.
+- `cargo test -p burrow-data --test properties -- --test-threads=1` -
+  1 passed in 2.80 s after the generator fix.
+- `cargo test -p burrow-config --test template_properties -- --test-threads=1`
+  - 5 passed in 0.16 s.
+- `cargo fmt --all --check` - green.
+- `cargo clippy --workspace --all-targets -- -D warnings` - green.
+- `cargo test --workspace --all-targets -- --test-threads=1` -
+  **187 passed, 0 failed across 23 suites** (8 new property tests).
+- `cargo audit` - green, 3 allowed transitive warnings (`paste`, `lru` x2).
+- `cargo build --workspace --release` - green, cached in 0.41 s (only
+  dev-dependencies changed; the previous full build was 53.45 s).
+
+**Not verified**: concurrent allocator processes, real crashes during the
+property runs (crash recovery has separate simulated tests), and non-Windows
+filesystems.
+
+**Next**: A6 `doctor --report` (redacted bundle and structured local crash
+notes), then the Phase 1 compatibility matrix and clean-machine pass.
