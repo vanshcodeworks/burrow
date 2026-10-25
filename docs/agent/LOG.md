@@ -111,3 +111,48 @@ secrets and doctor live-state preservation (A2.3 remainder), non-loopback
 listener detection (A2.6), hardlink/ADS snapshot entries (A2.7 remainder).
 
 **Next**: A2.6 and the A2.2/A2.3 remainders, then A3 fuzzing.
+
+## 2026-10-26 - cycle 5: real listener inspection for `expose`
+
+**Task**: Close A2.6 by inspecting the TCP sockets actually owned by supervised
+process trees and warning in `doctor` when a service is reachable without
+`expose = true`; re-run the full gate.
+
+**Outcome**: A2.6 implemented, documented in ADR 0006, and covered by five new
+integration tests. Full gate green.
+
+**What changed**:
+
+- `burrow-supervisor`: `Listener`, `listening_sockets(roots)`, `process_tree`,
+  IPv4/IPv6 `GetExtendedTcpTable` collection. Child listeners are attributed to
+  the supervised root PID. `Listener::is_loopback` treats any non-loopback
+  address (not just the wildcard) as reachable.
+- `burrow-cli`: `doctor` gains the `listeners` check. It warns for non-loopback
+  listeners whose service lacks `expose`, names the service/PID/address/port,
+  and never fails startup. If the OS query fails it reports a warning, not a
+  clean project.
+- `burrow-testbin`: new `bind <ADDRESS>` mode using `$PORT`.
+- Docs: ADR 0006, `security.md`, `cli.md`, `troubleshooting.md`, testbin README.
+
+**Commands and real results**:
+
+- `cargo test -p burrow-supervisor --test listeners -- --test-threads=1` -
+  2/2 pass (loopback/wildcard/IPv6 binds; child attribution; listener gone
+  after the host job closes).
+- `cargo test -p burrow-cli --test listeners -- --test-threads=1` - 3/3 pass
+  (wildcard without `expose` warns; wildcard with `expose` accepted; loopback
+  accepted).
+- `cargo fmt --all --check` - green.
+- `cargo clippy --workspace --all-targets -- -D warnings` - green.
+- `cargo test --workspace --all-targets -- --test-threads=1` -
+  **164 passed, 0 failed across 19 suites**.
+- `cargo audit` - green, 3 allowed transitive warnings (`paste`, `lru` x2).
+- `cargo build --workspace --release` - green in 1m03s.
+
+**Not verified**: UDP listeners (not inspected), processes outside the
+supervised tree, a locked-down machine that denies the owner-PID query (the
+warning path is implemented but not exercised), and Podman.
+
+**Next**: A2.2 interrupted restore/seed/initdb recovery, A2.3 corrupt secrets
+and `doctor` live-state preservation, then A2.7 hardlink/ADS coverage.
+

@@ -248,8 +248,10 @@ generates a secret, or binds a port. Checks include:
 - `config`: the project file parses and validates.
 - `cache`: the shared cache is discoverable and writable.
 - `daemon`: a running daemon answers, or stale state is reported.
-- `trust`, `secrets`, `packages`, `ports`, `commands`, `proxy`: project-specific
-  readiness checks.
+- `trust`, `secrets`, `packages`, `ports`, `commands`, `proxy`, `listeners`:
+  project-specific readiness checks. The `listeners` check inspects the TCP
+  sockets owned by supervised process trees and warns when a service listens on
+  a non-loopback address without `expose = true`.
 
 `--json` emits `{ "ok": bool, "project", "project_dir", "summary": {"ok",
 "warnings", "failures"}, "checks": [...] }`. Each check has `name`, `status`

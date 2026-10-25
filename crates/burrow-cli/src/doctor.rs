@@ -133,6 +133,7 @@ pub async fn run(options: &Options) -> Result<()> {
         ports_check(project, live_state.as_ref(), &mut checks);
         commands_check(project, &mut checks);
         proxy_check(project, live_state.as_ref(), &mut checks);
+        listener_check(project, live_state.as_ref(), &mut checks);
         container_check(project, &mut checks).await;
     }
 
@@ -811,6 +812,96 @@ fn proxy_check(project: &Project, live: Option<&RuntimeState>, checks: &mut Vec<
                 ),
             )
             .with_remedy("remove `expose = true` unless another machine must reach them"),
+        );
+    }
+}
+
+fn listener_check(project: &Project, live: Option<&RuntimeState>, checks: &mut Vec<Check>) {
+    let Some(live) = live else {
+        checks.push(Check::new(
+            "listeners",
+            CheckStatus::Ok,
+            "not inspected (project is stopped)",
+        ));
+        return;
+    };
+
+    let pids: Vec<u32> = live
+        .services
+        .values()
+        .filter_map(|service| service.pid)
+        .collect();
+    if pids.is_empty() {
+        checks.push(Check::new(
+            "listeners",
+            CheckStatus::Ok,
+            "no supervised process is running",
+        ));
+        return;
+    }
+
+    let listeners = match burrow_supervisor::listening_sockets(&pids) {
+        Ok(listeners) => listeners,
+        Err(error) => {
+            checks.push(
+                Check::new(
+                    "listeners",
+                    CheckStatus::Warn,
+                    format!("could not inspect listening sockets: {error}"),
+                )
+                .with_remedy(
+                    "run `burrow doctor` again; if it persists, report the error with your Windows version",
+                ),
+            );
+            return;
+        }
+    };
+
+    let mut unexpected = Vec::new();
+    for listener in listeners.iter().filter(|listener| !listener.is_loopback()) {
+        let service = live
+            .services
+            .iter()
+            .find(|(_, snapshot)| snapshot.pid == Some(listener.root_pid));
+        let Some((name, _)) = service else {
+            continue;
+        };
+        let exposed = project
+            .config
+            .services
+            .get(name)
+            .is_some_and(|service| service.expose);
+        if !exposed {
+            unexpected.push(format!(
+                "{name} (pid {}) listens on {}:{}",
+                listener.pid, listener.address, listener.port
+            ));
+        }
+    }
+
+    if unexpected.is_empty() {
+        checks.push(Check::new(
+            "listeners",
+            CheckStatus::Ok,
+            format!(
+                "{} supervised listener{}; none accept non-loopback traffic without expose",
+                listeners.len(),
+                if listeners.len() == 1 { "" } else { "s" }
+            ),
+        ));
+    } else {
+        checks.push(
+            Check::new(
+                "listeners",
+                CheckStatus::Warn,
+                format!(
+                    "non-loopback listeners without `expose = true`: {}",
+                    unexpected.join("; ")
+                ),
+            )
+            .with_remedy(
+                "bind the service to 127.0.0.1, or set `expose = true` only if another machine must reach it",
+            ),
         );
     }
 }

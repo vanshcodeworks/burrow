@@ -188,6 +188,18 @@ reachable directly, regardless of `expose`. Burrow only controls its own
 listeners. Commands are responsible for binding to loopback when that is what
 you want; PostgreSQL's registry entry passes `listen_addresses=127.0.0.1`.
 
+`burrow doctor` inspects the actual TCP sockets owned by supervised process
+trees and warns when a service listens on a non-loopback address without
+`expose = true`. The check is named `listeners`, runs only while the project is
+running, and names the service, PID, address, and port. It is a warning rather
+than a failure because a deliberate interface bind is a valid configuration.
+Inspection is read-only: it uses the Windows IP Helper owner-PID tables and a
+Toolhelp process snapshot, opens no sockets, and never changes firewall state.
+It covers TCP only, not UDP, and a process outside the supervised tree is not
+attributed. If the operating system denies the query, `doctor` reports that it
+could not inspect rather than reporting the project as clean. See
+[ADR 0006](decisions/0006-listener-inspection.md).
+
 The proxy speaks plain HTTP and routes by the `Host` header. It does not
 terminate TLS, authenticate users, or add authorization. Do not expose a route
 to an untrusted network.

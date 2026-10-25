@@ -48,6 +48,7 @@ fn run(args: &[String]) -> i32 {
         "ignore-ctrl" => cmd_ignore_ctrl(rest),
         "host" => cmd_host(rest),
         "serve" => cmd_serve(rest),
+        "bind" => cmd_bind(rest),
         "--help" | "-h" => {
             print_usage();
             EXIT_USAGE
@@ -290,7 +291,36 @@ fn cmd_serve(args: &[String]) -> i32 {
             return EXIT_IO;
         }
     };
-    emit(&format!("serving on 127.0.0.1:{port}"));
+    serve_listener(listener, &format!("127.0.0.1:{port}"))
+}
+
+/// Listens on an explicit address, taking the port from `$PORT`.
+///
+/// Used by the listener-inspection test: `bind 0.0.0.0` creates the same kind
+/// of wildcard listener a service could accidentally expose, while
+/// `bind 127.0.0.1` stays loopback-only.
+fn cmd_bind(args: &[String]) -> i32 {
+    let address = match single_arg("bind", args) {
+        Ok(address) => address,
+        Err(code) => return code,
+    };
+    let port = match std::env::var("PORT").ok().and_then(|raw| raw.parse().ok()) {
+        Some(port) => port,
+        None => return usage_error("bind: run with $PORT set"),
+    };
+
+    let listener = match std::net::TcpListener::bind((address, port)) {
+        Ok(listener) => listener,
+        Err(err) => {
+            eprintln!("error: could not bind {address}:{port}: {err}");
+            return EXIT_IO;
+        }
+    };
+    serve_listener(listener, &format!("{address}:{port}"))
+}
+
+fn serve_listener(listener: std::net::TcpListener, label: &str) -> i32 {
+    emit(&format!("serving on {label}"));
 
     for stream in listener.incoming() {
         let Ok(mut stream) = stream else {
@@ -366,6 +396,7 @@ Usage:
   burrow-testbin ignore-ctrl <READYFILE>
   burrow-testbin host <PROGRAM> [ARGS...]
   burrow-testbin serve [PORT]
+  burrow-testbin bind <ADDRESS>
 
 Modes:
   exit         Exit immediately with the given process exit code.
@@ -376,6 +407,7 @@ Modes:
   ignore-ctrl  Ignore Ctrl+C/Ctrl+Break and sleep until killed.
   host         Supervise PROGRAM in a Job Object, then idle until killed.
   serve        Listen on PORT (or $PORT), greet each client, echo bytes back.
+  bind         Listen on ADDRESS:$PORT, greet each client, echo bytes back.
 
 Exit codes: 0 success, 2 usage error, 3 file/process setup error,
             4 console control handler setup error."

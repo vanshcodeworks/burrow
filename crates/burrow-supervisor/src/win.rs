@@ -7,7 +7,7 @@
 //! The goal is to keep the surface small and auditable: safe wrappers around
 //! job objects, process creation, pipes, and console control events.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{c_void, OsStr, OsString};
 use std::fs::File;
 use std::mem::{size_of, size_of_val};
@@ -24,7 +24,7 @@ use windows::Win32::Foundation::{
     WAIT_OBJECT_0, WIN32_ERROR,
 };
 use windows::Win32::NetworkManagement::IpHelper::GetExtendedTcpTable;
-use windows::Win32::Networking::WinSock::AF_INET;
+use windows::Win32::Networking::WinSock::{AF_INET, AF_INET6};
 use windows::Win32::Security::SECURITY_ATTRIBUTES;
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, ReadDirectoryChangesW, FILE_ACTION_ADDED, FILE_ACTION_MODIFIED,
@@ -35,6 +35,9 @@ use windows::Win32::Storage::FileSystem::{
     FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows::Win32::System::Console::{GenerateConsoleCtrlEvent, CTRL_BREAK_EVENT};
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
 use windows::Win32::System::JobObjects::{
     CreateJobObjectW, JobObjectBasicAccountingInformation, JobObjectBasicProcessIdList,
     JobObjectCpuRateControlInformation, JobObjectExtendedLimitInformation,
@@ -923,6 +926,271 @@ fn build_environment(overrides: &BTreeMap<OsString, OsString>) -> Option<Vec<u16
     // Double NUL terminates the block.
     block.push(0);
     Some(block)
+}
+
+/// A TCP socket in the listening state owned by a supervised process tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listener {
+    /// Process id that owns the socket.
+    pub pid: u32,
+    /// Top-level supervised pid whose process tree contains the owner.
+    pub root_pid: u32,
+    /// Local port.
+    pub port: u16,
+    /// Local address in display form, such as `0.0.0.0`, `::`, or
+    /// `127.0.0.1`.
+    pub address: String,
+    /// True when the address is the IPv4 or IPv6 wildcard, so the socket
+    /// accepts traffic on every interface.
+    pub wildcard: bool,
+}
+
+impl Listener {
+    /// True when the socket is bound to a loopback address.
+    ///
+    /// A specific interface address such as `192.168.1.5` is not loopback and
+    /// is treated as reachable from the network, even though it is not the
+    /// wildcard.
+    pub fn is_loopback(&self) -> bool {
+        self.address
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
+    }
+}
+
+/// Returns every TCP listener owned by `roots` or one of their descendants.
+///
+/// This is a point-in-time, read-only snapshot built from the Windows IP
+/// Helper tables. A process that exits between the state read and this call
+/// contributes no rows; a pid reused in that window could theoretically
+/// contribute an unrelated listener. A listener in a child process is
+/// attributed to the root pid whose tree contains it.
+pub fn listening_sockets(roots: &[u32]) -> Result<Vec<Listener>> {
+    let owners = process_tree(roots)?;
+    if owners.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut listeners = Vec::new();
+    collect_ipv4_listeners(&owners, &mut listeners)?;
+    collect_ipv6_listeners(&owners, &mut listeners)?;
+    listeners.sort_by(|left, right| {
+        (left.pid, left.port, &left.address).cmp(&(right.pid, right.port, &right.address))
+    });
+    listeners.dedup();
+    Ok(listeners)
+}
+
+/// Maps every live pid in the trees rooted at `roots` to its root.
+///
+/// Uses a Toolhelp process snapshot to find parent links, then walks each
+/// tree. A pid that has already been claimed by an earlier root is skipped;
+/// Windows gives every process one parent, so this only guards against a
+/// malformed snapshot.
+fn process_tree(roots: &[u32]) -> Result<BTreeMap<u32, u32>> {
+    if roots.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+
+    // SAFETY: `TH32CS_SNAPPROCESS` with pid 0 asks for a snapshot of all
+    // processes. The returned handle is owned here and closed below.
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }
+        .map_err(|source| windows_error("CreateToolhelp32Snapshot", source))?;
+
+    let mut entry = PROCESSENTRY32W {
+        dwSize: size_of::<PROCESSENTRY32W>() as u32,
+        ..Default::default()
+    };
+    let mut children: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
+    // SAFETY: `entry` has `dwSize` set to the struct size and the snapshot
+    // handle is valid. The API fills one entry per call.
+    if unsafe { Process32FirstW(snapshot, &mut entry) }.is_ok() {
+        loop {
+            children
+                .entry(entry.th32ParentProcessID)
+                .or_default()
+                .push(entry.th32ProcessID);
+            // SAFETY: same invariants as `Process32FirstW`; the loop ends when
+            // the API reports ERROR_NO_MORE_FILES.
+            if unsafe { Process32NextW(snapshot, &mut entry) }.is_err() {
+                break;
+            }
+        }
+    }
+    // SAFETY: the snapshot handle was returned by CreateToolhelp32Snapshot
+    // and is not used after this point. CloseHandle is called exactly once.
+    unsafe {
+        let _ = CloseHandle(snapshot);
+    }
+
+    let mut owners = BTreeMap::new();
+    let mut seen = BTreeSet::new();
+    for root in roots {
+        let mut stack = vec![*root];
+        while let Some(pid) = stack.pop() {
+            if !seen.insert(pid) {
+                continue;
+            }
+            owners.insert(pid, *root);
+            if let Some(kids) = children.get(&pid) {
+                stack.extend(kids.iter().copied());
+            }
+        }
+    }
+    Ok(owners)
+}
+
+fn collect_ipv4_listeners(owners: &BTreeMap<u32, u32>, out: &mut Vec<Listener>) -> Result<()> {
+    use windows::Win32::NetworkManagement::IpHelper::{
+        MIB_TCPROW_OWNER_PID, MIB_TCPTABLE_OWNER_PID, MIB_TCP_STATE_LISTEN, TCP_TABLE_OWNER_PID_ALL,
+    };
+
+    let mut size = 0u32;
+    // SAFETY: a sizing query with a null table is the documented first call.
+    // It fills `size`; success is reported as ERROR_INSUFFICIENT_BUFFER here.
+    let sized = unsafe {
+        GetExtendedTcpTable(
+            None,
+            &mut size,
+            false,
+            u32::from(AF_INET.0),
+            TCP_TABLE_OWNER_PID_ALL,
+            0,
+        )
+    };
+    if sized != 0 && size == 0 {
+        return Err(windows_error(
+            "GetExtendedTcpTable(IPv4 size)",
+            WIN32_ERROR(sized).into(),
+        ));
+    }
+    if size == 0 {
+        return Ok(());
+    }
+
+    // A Vec<u32> guarantees the DWORD alignment the table rows require.
+    let mut buffer = vec![0u32; (size as usize).div_ceil(size_of::<u32>())];
+    let mut capacity = size;
+    // SAFETY: `buffer` is at least `size` bytes and `capacity` passes that
+    // same byte budget back to the API.
+    let filled = unsafe {
+        GetExtendedTcpTable(
+            Some(buffer.as_mut_ptr().cast()),
+            &mut capacity,
+            false,
+            u32::from(AF_INET.0),
+            TCP_TABLE_OWNER_PID_ALL,
+            0,
+        )
+    };
+    if filled != 0 {
+        return Err(windows_error(
+            "GetExtendedTcpTable(IPv4)",
+            WIN32_ERROR(filled).into(),
+        ));
+    }
+
+    // SAFETY: the call above initialized a MIB_TCPTABLE_OWNER_PID header with
+    // `dwNumEntries` contiguous rows inside `buffer`, which is DWORD-aligned
+    // and at least `capacity` bytes.
+    let table = buffer.as_ptr().cast::<MIB_TCPTABLE_OWNER_PID>();
+    let rows = unsafe {
+        let count = (*table).dwNumEntries as usize;
+        let first = (&raw const (*table).table).cast::<MIB_TCPROW_OWNER_PID>();
+        std::slice::from_raw_parts(first, count)
+    };
+    for row in rows {
+        if row.dwState != MIB_TCP_STATE_LISTEN.0 as u32 {
+            continue;
+        }
+        let Some(root_pid) = owners.get(&row.dwOwningPid) else {
+            continue;
+        };
+        let address = std::net::Ipv4Addr::from(u32::from_be(row.dwLocalAddr));
+        out.push(Listener {
+            pid: row.dwOwningPid,
+            root_pid: *root_pid,
+            port: u16::from_be(row.dwLocalPort as u16),
+            address: address.to_string(),
+            wildcard: address.is_unspecified(),
+        });
+    }
+    Ok(())
+}
+
+fn collect_ipv6_listeners(owners: &BTreeMap<u32, u32>, out: &mut Vec<Listener>) -> Result<()> {
+    use windows::Win32::NetworkManagement::IpHelper::{
+        MIB_TCP6ROW_OWNER_PID, MIB_TCP6TABLE_OWNER_PID, MIB_TCP_STATE_LISTEN,
+        TCP_TABLE_OWNER_PID_ALL,
+    };
+
+    let mut size = 0u32;
+    // SAFETY: a sizing query with a null table is the documented first call.
+    let sized = unsafe {
+        GetExtendedTcpTable(
+            None,
+            &mut size,
+            false,
+            u32::from(AF_INET6.0),
+            TCP_TABLE_OWNER_PID_ALL,
+            0,
+        )
+    };
+    if sized != 0 && size == 0 {
+        return Err(windows_error(
+            "GetExtendedTcpTable(IPv6 size)",
+            WIN32_ERROR(sized).into(),
+        ));
+    }
+    if size == 0 {
+        return Ok(());
+    }
+
+    let mut buffer = vec![0u32; (size as usize).div_ceil(size_of::<u32>())];
+    let mut capacity = size;
+    // SAFETY: `buffer` is at least `size` bytes and DWORD-aligned.
+    let filled = unsafe {
+        GetExtendedTcpTable(
+            Some(buffer.as_mut_ptr().cast()),
+            &mut capacity,
+            false,
+            u32::from(AF_INET6.0),
+            TCP_TABLE_OWNER_PID_ALL,
+            0,
+        )
+    };
+    if filled != 0 {
+        return Err(windows_error(
+            "GetExtendedTcpTable(IPv6)",
+            WIN32_ERROR(filled).into(),
+        ));
+    }
+
+    // SAFETY: the call above initialized a MIB_TCP6TABLE_OWNER_PID header with
+    // `dwNumEntries` contiguous rows inside `buffer`.
+    let table = buffer.as_ptr().cast::<MIB_TCP6TABLE_OWNER_PID>();
+    let rows = unsafe {
+        let count = (*table).dwNumEntries as usize;
+        let first = (&raw const (*table).table).cast::<MIB_TCP6ROW_OWNER_PID>();
+        std::slice::from_raw_parts(first, count)
+    };
+    for row in rows {
+        if row.dwState != MIB_TCP_STATE_LISTEN.0 as u32 {
+            continue;
+        }
+        let Some(root_pid) = owners.get(&row.dwOwningPid) else {
+            continue;
+        };
+        let address = std::net::Ipv6Addr::from(row.ucLocalAddr);
+        out.push(Listener {
+            pid: row.dwOwningPid,
+            root_pid: *root_pid,
+            port: u16::from_be(row.dwLocalPort as u16),
+            address: address.to_string(),
+            wildcard: address.is_unspecified(),
+        });
+    }
+    Ok(())
 }
 
 /// Counts TCP connections in the `ESTAB` state whose local port is `port`.

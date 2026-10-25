@@ -93,6 +93,7 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | Corrupt state/ports recovery | `tests/data_safety.rs`: corrupt `state.json` fails loudly, is never deleted, and recovers after removal; truncated `ports.json` fails startup with `invalid port assignment file` and recovers after removal | verified |
 | Interrupted snapshot leaves no listed debris | `tests/data_safety.rs::half_written_snapshot_is_never_listed`: a crash-simulated `.burrow-tmp-*` directory is not listed, not restored, and does not block a later snapshot | verified |
 | Interrupted download resumes | `cache.rs::an_interrupted_download_resumes_from_the_part_file` (local range server, progress offset, Range request, completed package, `.part` removed) | verified |
+| Actual TCP listeners are inspected, and wildcard binds without `expose` warn | `tests/listeners.rs` (supervisor: loopback/wildcard/IPv6 binds, child attribution, listener gone after job close; CLI: `doctor` warns on `0.0.0.0` without `expose`, accepts it with `expose`, accepts loopback-only) | verified (TCP) / gap (UDP, processes outside the supervised tree — documented in ADR 0006) |
 
 ## Gaps found by this audit (queued)
 

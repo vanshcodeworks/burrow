@@ -16,9 +16,11 @@ burrow-testbin <mode> [arguments...]
 
 The first argument selects the mode. `exit`, `sleep`, `leak`, `tree`,
 `graceful`, and `ignore-ctrl` take exactly one argument; `host` takes a program
-and zero or more arguments. Paths may contain spaces; pass each as a single
-argument (no shell quoting is involved when tests use `Command::arg`). All
-stdout lines are flushed immediately, before any long operation.
+and zero or more arguments; `serve` takes an optional port; `bind` takes an
+address and reads the port from `$PORT`. Paths may contain spaces; pass each as
+a single argument (no shell quoting is involved when tests use
+`Command::arg`). All stdout lines are flushed immediately, before any long
+operation.
 
 ### `exit <CODE>`
 
@@ -79,6 +81,19 @@ Prints `host child pid: <pid>`, then supervises `PROGRAM` in a Job Object using
 is meant to be killed abruptly by a test: the kernel then closes the job handle
 and `KILL_ON_JOB_CLOSE` terminates the supervised tree. Exit code 3 if the child
 cannot be spawned or the Tokio runtime cannot be created.
+
+### `serve [PORT]`
+
+Binds `127.0.0.1:PORT` (or `127.0.0.1:$PORT` when no argument is given), prints
+`serving on 127.0.0.1:<port>`, greets each client with
+`hello from burrow-testbin`, and echoes received bytes. Backs the idle-stop,
+lazy wake-up, and proxy tests. Exit code 3 when the bind fails.
+
+### `bind <ADDRESS>`
+
+Binds `ADDRESS:$PORT` and otherwise behaves like `serve`. Used by the listener
+inspection tests: `bind 0.0.0.0` creates a wildcard listener, `bind 127.0.0.1`
+stays loopback-only. `$PORT` is required. Exit code 3 when the bind fails.
 
 ## Usage errors
 

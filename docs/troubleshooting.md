@@ -110,6 +110,38 @@ chooses a different fallback port. When any routed service sets `expose = true`
 the proxy binds all interfaces instead of loopback, and the daemon log records a
 warning.
 
+## `doctor` warns about a non-loopback listener
+
+```text
+warn  listeners  non-loopback listeners without `expose = true`: api (pid 1234) listens on 0.0.0.0:40002
+help: bind the service to 127.0.0.1, or set `expose = true` only if another machine must reach it
+```
+
+The service process is listening on every interface (or on a specific interface
+address), so its port is reachable from the network even though Burrow's reverse
+proxy is loopback-only. `expose = true` does not cause this and `expose = false`
+cannot prevent it: the bind address comes from the service's own configuration,
+framework default, or environment.
+
+Find the setting that controls the bind address and change it to `127.0.0.1`
+(or `localhost`). Common cases:
+
+- a `HOST` or `BIND_ADDRESS` variable set in the service `env`;
+- a framework default such as Node's `server.listen(port)` with no host, or
+  Vite's `--host`;
+- a database setting such as PostgreSQL's `listen_addresses`;
+- a wrapper script that starts the real server as a child process.
+
+If another machine genuinely must reach the port, set `expose = true` on the
+service so the trust summary and `doctor` reflect that choice. Restrict the port
+with a firewall rule as well; Burrow does not add one.
+
+The check runs only while the project is running, inspects TCP sockets only (not
+UDP), and cannot see processes that left the supervised process tree. A warning
+that says `could not inspect listening sockets` means Windows denied the query;
+the project is not being reported as clean. If the warning persists, include the
+error and your Windows version in a bug report.
+
 ## Proxy error pages
 
 | Status | Body starts with | Meaning |

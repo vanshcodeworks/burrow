@@ -47,4 +47,4 @@ pub use logs::{LogLine, LogRing, DEFAULT_LOG_MAX_BYTES, DEFAULT_RING_CAPACITY};
 pub use process::{ManagedProcess, ProcessSpec, ShutdownOutcome};
 pub use restart::{RestartBackoff, RestartDecision, DEFAULT_MAX_FAILURES, DEFAULT_WINDOW};
 pub use watch::{DirectoryWatcher, WatchAction, WatchEvent};
-pub use win::{established_connections, JobStats};
+pub use win::{established_connections, listening_sockets, JobStats, Listener};

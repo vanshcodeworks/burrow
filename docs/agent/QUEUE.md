@@ -23,8 +23,13 @@
   - [x] A2.5 Secrets scanning: tests/secrets.rs scans daemon.log, all
         service logs, state.json, status (human+json), logs, project env,
         and a snapshot; positive control on `burrow env <service>`.
-  - [ ] A2.6 Non-loopback listener detection: testbin that binds 0.0.0.0;
-        assert doctor warns (if implemented) or add the check.
+  - [x] A2.6 Non-loopback listener detection: `burrow_supervisor::listening_sockets`
+        reads IPv4/IPv6 owner-PID TCP tables and attributes child listeners to
+        the supervised root via a Toolhelp process snapshot. `doctor` adds a
+        `listeners` warning for non-loopback binds without `expose = true`.
+        Tests: supervisor `tests/listeners.rs` (loopback/wildcard/IPv6,
+        child attribution, kill cleanup); CLI `tests/listeners.rs` (wildcard
+        warns, exposed wildcard accepted, loopback accepted). ADR 0006.
   - [x] A2.7 (partial) junction rejection in snapshots now tested (real
         mklink /J; error names the path; nothing left behind). Remaining:
         hardlink + ADS in burrow-data, non-Windows symlink path.
