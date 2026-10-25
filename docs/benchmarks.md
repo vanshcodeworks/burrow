@@ -21,10 +21,10 @@ cargo build --release -p burrow-cli
 | OS | Windows 11 Home Single Language, 10.0.26200 |
 | Burrow | 0.1.0, release build (`lto = "thin"`) |
 | Rust | 1.94.1 |
-| Measured | 2026-10-24 (Burrow-only); 2026-10-25 (head-to-head) |
+| Measured | 2026-10-24 (Burrow-only); 2026-10-25 UTC (head-to-head) |
 
 Docker CLI 24.0.7 is installed. An earlier run on 2026-10-24 had no Docker
-daemon, so it reported no comparison. The 2026-10-25 head-to-head below ran with
+daemon, so it reported no comparison. The 2026-10-25 UTC head-to-head below ran with
 Docker Desktop 24.0.7 and Compose v2.23.3-desktop.2 on its WSL 2 backend.
 
 ## Project
@@ -55,7 +55,7 @@ Both published targets were met:
 - Burrow daemon below 20 MB RSS idle: **10.6-12.6 MB**.
 - Warm `burrow up` well under 10 seconds: **1.87-1.95 s**.
 
-## Docker Compose comparison (2026-10-25)
+## Docker Compose comparison (2026-10-25 UTC)
 
 This is a same-machine, same-project, same-endpoint comparison. It uses the
 `examples/node-postgres` app, schema, and seed. The Compose fixture is generated
@@ -93,11 +93,17 @@ a statistical distribution.
 
 Compose was faster when initializing empty application data: **4.11 s** versus
 **10.7 s** for Burrow. That row excludes image pull and build. The final clean
-run pulled the PostgreSQL image in **21.57 s** and built the API image in
-**2.67 s**; those setup steps are not part of the startup numbers. Burrow's
-equivalent cold start with an empty package cache was **61.35 s** on 2026-10-24,
-but that run included a 356 MB download and is not the same setup boundary as
-the 4.11 s Compose row.
+run pulled the PostgreSQL image in **21.57 s** and rebuilt the API image in
+**2.67 s**; those setup steps are not part of the startup numbers. The API
+rebuild reused Docker's layer cache for `npm ci`, so 2.67 s is a warm-cache
+rebuild, not a cold build. Burrow's equivalent cold start with an empty package
+cache was **61.35 s** on 2026-10-24, but that run included a 356 MB download and
+is not the same setup boundary as the 4.11 s Compose row.
+
+The database initialization flags are not identical. Burrow runs `initdb` with
+`-A trust --no-locale` and binds PostgreSQL to loopback; the Compose image uses
+its default locale and password authentication. The app, schema, and seed are
+the same, but this is not a byte-for-byte database configuration comparison.
 
 Memory is not like-for-like. Burrow's daemon working set was **10.9-11.0 MB**
 and its whole process tree was **171.5-172.2 MB**. Compose's two containers used
@@ -108,7 +114,10 @@ footprint, or the container sum as the whole Docker cost.
 Caveats: one Windows 11 Home machine; Docker Desktop's WSL 2 backend allocates
 memory dynamically; no Podman run; no Linux or macOS host; the Compose fixture
 binds the API to `0.0.0.0` inside the container so Docker can forward the port,
-while the native example binds loopback. The fixture and harness are in
+while the native example binds loopback. The Compose samples ran before the
+Burrow samples, and Docker Desktop's VM stayed running, so measurement order is
+a possible source of bias that this run does not quantify. The API build time is
+a warm-cache rebuild. The fixture and harness are in
 `scripts/benchmark-stacks.ps1`; the raw JSON includes every sample, image ID,
 and setup time.
 

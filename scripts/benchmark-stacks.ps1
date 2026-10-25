@@ -465,7 +465,10 @@ $report = [pscustomobject]@{
         "Startup is wall-clock time from launching the stack until the API returns HTTP 200 with the seeded row.",
         "Burrow cold data starts with no .burrow data but a warm package cache; the Compose cold run starts with an empty volume but cached images.",
         "Image pull/build and Burrow package download are setup, not startup, and are reported separately or excluded.",
-        "Compose container_stats are container memory only; they exclude the Docker Desktop VM and daemon overhead.",
+        "The API build may reuse Docker's build layer cache; the build time is not necessarily a cold build.",
+        "Compose container stats are container memory only; they exclude the Docker Desktop VM and daemon overhead.",
+        "The Compose fixture binds the API to 0.0.0.0 inside the container; the native example binds loopback.",
+        "Compose runs before Burrow and Docker Desktop's VM stays running, so measurement order is not randomized.",
         "This is a single-machine sample, not a statistical distribution."
     )
 }
