@@ -47,6 +47,7 @@ fn run(args: &[String]) -> i32 {
         "graceful" => cmd_graceful(rest),
         "ignore-ctrl" => cmd_ignore_ctrl(rest),
         "host" => cmd_host(rest),
+        "serve" => cmd_serve(rest),
         "--help" | "-h" => {
             print_usage();
             EXIT_USAGE
@@ -260,6 +261,63 @@ fn cmd_host(args: &[String]) -> i32 {
     })
 }
 
+/// Listens on a port, greets each client, and echoes bytes back.
+///
+/// This mode backs the idle-stop and lazy wake-up integration tests: held
+/// clients keep the service "busy", closing them lets it idle-stop, and the
+/// greeting proves that a woken client's tunnel carries server-first bytes.
+///
+/// Ctrl+Break uses the default console handler, which terminates the process;
+/// the supervisor relies on that for graceful shutdown.
+fn cmd_serve(args: &[String]) -> i32 {
+    let port = match args.first() {
+        Some(raw) => match raw.parse::<u16>() {
+            Ok(port) => port,
+            Err(_) => return usage_error(&format!("serve: invalid port '{raw}' (expected u16)")),
+        },
+        // Without an argument the port comes from $PORT, which the daemon
+        // sets to the service's allocated port.
+        None => match std::env::var("PORT").ok().and_then(|raw| raw.parse().ok()) {
+            Some(port) => port,
+            None => return usage_error("serve: pass a port, or run with $PORT set"),
+        },
+    };
+
+    let listener = match std::net::TcpListener::bind(("127.0.0.1", port)) {
+        Ok(listener) => listener,
+        Err(err) => {
+            eprintln!("error: could not bind 127.0.0.1:{port}: {err}");
+            return EXIT_IO;
+        }
+    };
+    emit(&format!("serving on 127.0.0.1:{port}"));
+
+    for stream in listener.incoming() {
+        let Ok(mut stream) = stream else {
+            continue;
+        };
+        thread::spawn(move || {
+            use std::io::{Read, Write};
+            if stream.write_all(b"hello from burrow-testbin\n").is_err() {
+                return;
+            }
+            let mut buffer = [0_u8; 512];
+            loop {
+                match stream.read(&mut buffer) {
+                    Ok(0) | Err(_) => break,
+                    Ok(read) => {
+                        if stream.write_all(&buffer[..read]).is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        });
+    }
+    0
+}
+
 /// Returns the single argument required by a mode.
 fn single_arg<'a>(mode: &str, args: &'a [String]) -> Result<&'a str, i32> {
     match args {
@@ -307,6 +365,7 @@ Usage:
   burrow-testbin graceful <FLAGFILE>
   burrow-testbin ignore-ctrl <READYFILE>
   burrow-testbin host <PROGRAM> [ARGS...]
+  burrow-testbin serve [PORT]
 
 Modes:
   exit         Exit immediately with the given process exit code.
@@ -316,6 +375,7 @@ Modes:
   graceful     Wait for Ctrl+C/Ctrl+Break, write FLAGFILE, exit 0.
   ignore-ctrl  Ignore Ctrl+C/Ctrl+Break and sleep until killed.
   host         Supervise PROGRAM in a Job Object, then idle until killed.
+  serve        Listen on PORT (or $PORT), greet each client, echo bytes back.
 
 Exit codes: 0 success, 2 usage error, 3 file/process setup error,
             4 console control handler setup error."

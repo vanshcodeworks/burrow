@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 use std::ffi::{c_void, OsStr, OsString};
 use std::fs::File;
-use std::mem::size_of;
+use std::mem::{size_of, size_of_val};
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::io::FromRawHandle;
 use std::path::{Path, PathBuf};
@@ -19,12 +19,20 @@ use std::time::Duration;
 
 use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::Foundation::{
-    CloseHandle, GetLastError, SetHandleInformation, ERROR_INSUFFICIENT_BUFFER, FILETIME,
-    GENERIC_READ, HANDLE, HANDLE_FLAGS, HANDLE_FLAG_INHERIT, WAIT_OBJECT_0, WIN32_ERROR,
+    CloseHandle, GetLastError, SetHandleInformation, ERROR_INSUFFICIENT_BUFFER,
+    ERROR_NOTIFY_ENUM_DIR, FILETIME, GENERIC_READ, HANDLE, HANDLE_FLAGS, HANDLE_FLAG_INHERIT,
+    WAIT_OBJECT_0, WIN32_ERROR,
 };
+use windows::Win32::NetworkManagement::IpHelper::GetExtendedTcpTable;
+use windows::Win32::Networking::WinSock::AF_INET;
 use windows::Win32::Security::SECURITY_ATTRIBUTES;
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    CreateFileW, ReadDirectoryChangesW, FILE_ACTION_ADDED, FILE_ACTION_MODIFIED,
+    FILE_ACTION_REMOVED, FILE_ACTION_RENAMED_NEW_NAME, FILE_ATTRIBUTE_NORMAL,
+    FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OVERLAPPED, FILE_NOTIFY_CHANGE_CREATION,
+    FILE_NOTIFY_CHANGE_DIR_NAME, FILE_NOTIFY_CHANGE_FILE_NAME, FILE_NOTIFY_CHANGE_LAST_WRITE,
+    FILE_NOTIFY_CHANGE_SIZE, FILE_NOTIFY_INFORMATION, FILE_SHARE_DELETE, FILE_SHARE_READ,
+    FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows::Win32::System::Console::{GenerateConsoleCtrlEvent, CTRL_BREAK_EVENT};
 use windows::Win32::System::JobObjects::{
@@ -41,13 +49,15 @@ use windows::Win32::System::JobObjects::{
 use windows::Win32::System::Pipes::CreatePipe;
 use windows::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
 use windows::Win32::System::Threading::{
-    CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess, GetProcessTimes,
-    InitializeProcThreadAttributeList, OpenProcess, UpdateProcThreadAttribute, WaitForSingleObject,
+    CreateEventW, CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
+    GetProcessTimes, InitializeProcThreadAttributeList, OpenProcess, SetEvent,
+    UpdateProcThreadAttribute, WaitForMultipleObjects, WaitForSingleObject,
     CREATE_NEW_PROCESS_GROUP, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
     LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
     PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_JOB_LIST, STARTF_USESTDHANDLES,
     STARTUPINFOEXW, STARTUPINFOW,
 };
+use windows::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 
 use crate::error::{Error, Result};
 
@@ -913,6 +923,298 @@ fn build_environment(overrides: &BTreeMap<OsString, OsString>) -> Option<Vec<u16
     // Double NUL terminates the block.
     block.push(0);
     Some(block)
+}
+
+/// Counts TCP connections in the `ESTAB` state whose local port is `port`.
+///
+/// This is a whole-system snapshot: any process holding an established
+/// connection to the port counts, which is exactly what idle-stop needs. The
+/// caller samples this periodically; transient failures are skippable.
+pub fn established_connections(port: u16) -> Result<u64> {
+    use windows::Win32::NetworkManagement::IpHelper::{
+        MIB_TCPROW_OWNER_PID, MIB_TCPTABLE_OWNER_PID, MIB_TCP_STATE_ESTAB, TCP_TABLE_OWNER_PID_ALL,
+    };
+
+    // `dwLocalPort` is stored in network byte order inside a DWORD.
+    let wanted = u32::from(port.to_be());
+    let mut size = 0u32;
+    // SAFETY: a sizing query with a null table is the documented first call.
+    // It fills `size`; success is reported as ERROR_INSUFFICIENT_BUFFER here.
+    let sized = unsafe {
+        GetExtendedTcpTable(
+            None,
+            &mut size,
+            false,
+            u32::from(AF_INET.0),
+            TCP_TABLE_OWNER_PID_ALL,
+            0,
+        )
+    };
+    if sized != 0 && size == 0 {
+        return Err(windows_error("GetExtendedTcpTable(size)", last_error()));
+    }
+    if size == 0 {
+        return Ok(0);
+    }
+
+    let mut buffer = vec![0u8; size as usize];
+    let mut capacity = size;
+    // SAFETY: `buffer` is at least the size reported by the sizing call, and
+    // `capacity` passes that same budget back to the API.
+    let filled = unsafe {
+        GetExtendedTcpTable(
+            Some(buffer.as_mut_ptr().cast()),
+            &mut capacity,
+            false,
+            u32::from(AF_INET.0),
+            TCP_TABLE_OWNER_PID_ALL,
+            0,
+        )
+    };
+    if filled != 0 {
+        return Err(windows_error(
+            "GetExtendedTcpTable",
+            WIN32_ERROR(filled).into(),
+        ));
+    }
+
+    // SAFETY: the call above initialized a MIB_TCPTABLE_OWNER_PID header with
+    // `dwNumEntries` contiguous rows inside `buffer`.
+    let table = buffer.as_ptr().cast::<MIB_TCPTABLE_OWNER_PID>();
+    let rows = unsafe {
+        let count = (*table).dwNumEntries as usize;
+        let first = (&raw const (*table).table).cast::<MIB_TCPROW_OWNER_PID>();
+        std::slice::from_raw_parts(first, count)
+    };
+    Ok(rows
+        .iter()
+        .filter(|row| row.dwState == MIB_TCP_STATE_ESTAB.0 as u32 && row.dwLocalPort == wanted)
+        .count() as u64)
+}
+
+/// One queued filesystem change, delivered by the watch thread.
+pub(crate) type WatchSender = std::sync::mpsc::Sender<crate::watch::WatchEvent>;
+
+/// A recursive directory watch running on its own thread.
+///
+/// The thread owns the directory and change-event handles; `stop` signals it to
+/// cancel the pending read and exit. Dropping the watch joins the thread, so no
+/// handle outlives it.
+pub(crate) struct DirectoryWatch {
+    stop: HANDLE,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+/// Handles moved into the watch thread. Kernel handles are valid process-wide.
+struct WatchHandles {
+    directory: HANDLE,
+    changes: HANDLE,
+    stop: HANDLE,
+}
+
+// SAFETY: the three handles are kernel object handles that are safe to use from
+// any thread. Ownership moves exclusively to the watch thread, which closes
+// `directory` and `changes`; `stop` stays owned by `DirectoryWatch`.
+unsafe impl Send for WatchHandles {}
+
+/// Starts a recursive watch on `root`, sending events to `sender`.
+///
+/// Events are best-effort: if the internal buffer overflows between reads, an
+/// [`crate::watch::WatchAction::Overflow`] event is sent instead of the lost
+/// details.
+pub(crate) fn spawn_directory_watch(root: &Path, sender: WatchSender) -> Result<DirectoryWatch> {
+    let wide = wide_null(root.as_os_str());
+    // SAFETY: `wide` is NUL-terminated and lives for the call. The handle has
+    // backup semantics (required to open a directory) and overlapped mode so
+    // the read can be cancelled from `DirectoryWatch::drop`. The handle is
+    // owned by the watch thread from here on.
+    let directory = unsafe {
+        CreateFileW(
+            PCWSTR(wide.as_ptr()),
+            GENERIC_READ.0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            None,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
+            None,
+        )
+    }
+    .map_err(|source| windows_error("CreateFileW(watch root)", source))?;
+
+    // SAFETY: null attributes create an unnamed auto-reset event owned here.
+    let changes = unsafe { CreateEventW(None, false, false, PCWSTR::null()) }
+        .map_err(|source| windows_error("CreateEventW(watch changes)", source))?;
+    // SAFETY: null attributes create an unnamed manual-reset event owned here.
+    let stop = unsafe { CreateEventW(None, true, false, PCWSTR::null()) }
+        .map_err(|source| windows_error("CreateEventW(watch stop)", source))?;
+
+    let handles = WatchHandles {
+        directory,
+        changes,
+        stop,
+    };
+    let root = root.to_path_buf();
+    let thread = std::thread::Builder::new()
+        .name(format!("burrow-watch-{}", root.display()))
+        .spawn(move || watch_loop(handles, root, sender))
+        .map_err(Error::WaitThread)?;
+
+    Ok(DirectoryWatch {
+        stop,
+        thread: Some(thread),
+    })
+}
+
+impl Drop for DirectoryWatch {
+    fn drop(&mut self) {
+        // SAFETY: `stop` is a valid manual-reset event owned by `self`.
+        unsafe {
+            let _ = SetEvent(self.stop);
+        }
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+        // SAFETY: the watch thread has exited, so this close is the only one.
+        unsafe {
+            let _ = CloseHandle(self.stop);
+        }
+    }
+}
+
+fn watch_loop(handles: WatchHandles, root: PathBuf, sender: WatchSender) {
+    // 64 KiB, DWORD-aligned as ReadDirectoryChangesW requires.
+    let mut buffer = vec![0u32; 16 * 1024];
+    let filter = FILE_NOTIFY_CHANGE_FILE_NAME
+        | FILE_NOTIFY_CHANGE_DIR_NAME
+        | FILE_NOTIFY_CHANGE_LAST_WRITE
+        | FILE_NOTIFY_CHANGE_SIZE
+        | FILE_NOTIFY_CHANGE_CREATION;
+
+    loop {
+        let mut overlapped = OVERLAPPED {
+            hEvent: handles.changes,
+            ..Default::default()
+        };
+        let mut transferred = 0u32;
+        // SAFETY: `buffer` is DWORD-aligned and large enough for the reported
+        // length, `overlapped` is initialized with the change event, and the
+        // completion routine is unused. The call queues the read; the wait
+        // below completes it.
+        let queued = unsafe {
+            ReadDirectoryChangesW(
+                handles.directory,
+                buffer.as_mut_ptr().cast(),
+                (buffer.len() * size_of::<u32>()) as u32,
+                true,
+                filter,
+                Some(&mut transferred),
+                Some(ptr::from_mut(&mut overlapped)),
+                None,
+            )
+        };
+        if let Err(source) = queued {
+            tracing::warn!(root = %root.display(), %source, "directory watch failed to queue a read");
+            break;
+        }
+
+        // SAFETY: both handles are valid and owned; the wait is bounded by the
+        // pending read and the stop event.
+        let wait =
+            unsafe { WaitForMultipleObjects(&[handles.changes, handles.stop], false, INFINITE) };
+        if wait != WAIT_OBJECT_0 {
+            // Stop requested, or the wait itself failed: cancel the read.
+            // SAFETY: the directory handle is valid and owned by this thread.
+            unsafe {
+                let _ = CancelIoEx(handles.directory, None);
+            }
+            break;
+        }
+
+        let mut bytes = 0u32;
+        // SAFETY: `overlapped` matches the completed read and `bytes` is a
+        // valid out-pointer. The event is already signaled, so this returns
+        // immediately.
+        let completed = unsafe {
+            GetOverlappedResult(
+                handles.directory,
+                ptr::from_ref(&overlapped),
+                &mut bytes,
+                false,
+            )
+        };
+        if let Err(source) = completed {
+            if WIN32_ERROR::from_error(&source) == Some(ERROR_NOTIFY_ENUM_DIR) {
+                // The buffer overflowed: report that changes were lost rather
+                // than pretending nothing happened.
+                let _ = sender.send(crate::watch::WatchEvent {
+                    root: root.clone(),
+                    relative: PathBuf::new(),
+                    action: crate::watch::WatchAction::Overflow,
+                });
+                continue;
+            }
+            tracing::warn!(root = %root.display(), %source, "directory watch read failed");
+            break;
+        }
+
+        parse_notify_records(&buffer, bytes as usize, &root, &sender);
+    }
+
+    // SAFETY: both handles are owned exclusively by this thread and are closed
+    // exactly once. The stop event is owned by `DirectoryWatch`.
+    unsafe {
+        let _ = CloseHandle(handles.changes);
+        let _ = CloseHandle(handles.directory);
+    }
+}
+
+/// Walks the FILE_NOTIFY_INFORMATION chain inside one completed read.
+fn parse_notify_records(buffer: &[u32], byte_count: usize, root: &Path, sender: &WatchSender) {
+    let base = buffer.as_ptr().cast::<u8>();
+    let limit = byte_count.min(size_of_val(buffer));
+    let mut offset = 0usize;
+
+    while offset + 12 <= limit {
+        // SAFETY: the bounds check above covers the fixed header, and the API
+        // wrote a well-formed record chain inside the transferred byte count.
+        let (next, action, name_length) = unsafe {
+            let record = base.add(offset) as *const FILE_NOTIFY_INFORMATION;
+            (
+                (*record).NextEntryOffset,
+                (*record).Action,
+                (*record).FileNameLength,
+            )
+        };
+        let name_bytes = name_length as usize;
+        if offset + 12 + name_bytes > limit || name_bytes % 2 != 0 {
+            break;
+        }
+
+        let relative = unsafe {
+            let wide =
+                std::slice::from_raw_parts(base.add(offset + 12) as *const u16, name_bytes / 2);
+            PathBuf::from(String::from_utf16_lossy(wide))
+        };
+        let action = match action {
+            value if value == FILE_ACTION_ADDED => crate::watch::WatchAction::Added,
+            value if value == FILE_ACTION_REMOVED => crate::watch::WatchAction::Removed,
+            value if value == FILE_ACTION_MODIFIED => crate::watch::WatchAction::Modified,
+            value if value == FILE_ACTION_RENAMED_NEW_NAME => crate::watch::WatchAction::Renamed,
+            // FILE_ACTION_RENAMED_OLD_NAME arrives as its own record; the new
+            // name record is the useful one, so old names are dropped here.
+            _ => crate::watch::WatchAction::Other,
+        };
+        let _ = sender.send(crate::watch::WatchEvent {
+            root: root.to_path_buf(),
+            relative,
+            action,
+        });
+
+        if next == 0 {
+            break;
+        }
+        offset += next as usize;
+    }
 }
 
 #[cfg(test)]

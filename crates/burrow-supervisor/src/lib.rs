@@ -38,6 +38,7 @@ mod health;
 mod logs;
 mod process;
 mod restart;
+mod watch;
 mod win;
 
 pub use error::{Error, Result};
@@ -45,4 +46,5 @@ pub use health::{wait_for_health, HealthCheck, HealthError, HealthOptions, Healt
 pub use logs::{LogLine, LogRing, DEFAULT_LOG_MAX_BYTES, DEFAULT_RING_CAPACITY};
 pub use process::{ManagedProcess, ProcessSpec, ShutdownOutcome};
 pub use restart::{RestartBackoff, RestartDecision, DEFAULT_MAX_FAILURES, DEFAULT_WINDOW};
-pub use win::JobStats;
+pub use watch::{DirectoryWatcher, WatchAction, WatchEvent};
+pub use win::{established_connections, JobStats};
