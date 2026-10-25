@@ -74,7 +74,7 @@ windows = { version = "0.62.2", features = [
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",
 ] }
-zip = { version = "5.0.1", default-features = false, features = ["deflate-flate2"] }
+zip = { version = "9.1.0", default-features = false, features = ["deflate-flate2"] }
 
 [profile.release]
 lto = "thin"

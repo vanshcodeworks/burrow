@@ -85,7 +85,12 @@ fn extract_zip(archive: &Path, destination: &Path) -> Result<()> {
         let mut entry = zip.by_index(index).map_err(|error| Error::Archive {
             message: format!("could not read zip entry #{index}: {error}"),
         })?;
-        let raw_name = entry.name().to_owned();
+        let raw_name = entry
+            .name()
+            .map(|name| name.into_owned())
+            .map_err(|error| Error::Archive {
+                message: format!("zip entry #{index} has an invalid name: {error}"),
+            })?;
         if let Some(mode) = entry.unix_mode() {
             if mode & 0o170_000 == 0o120_000 {
                 return Err(Error::UnsafeEntry {
