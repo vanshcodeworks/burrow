@@ -181,6 +181,43 @@ convenience, not a defense against a compromised account.
 Public output such as `burrow status --json` omits the token. Service logs and
 `.burrow/daemon.log` can still contain anything the services print.
 
+## Diagnostic bundles
+
+`burrow doctor --report` writes a zip under `.burrow/reports/` by default and
+prints its path. The bundle is created locally; Burrow has no upload code and
+never sends it anywhere. `--report-dir <DIR>` writes it elsewhere and implies
+`--report`.
+
+Every text entry passes through a redactor that replaces:
+
+- values from `.burrow/secrets`, the state token, and the values of sensitive
+  environment variables such as `*_TOKEN`, `*_SECRET`, and `*_PASSWORD`;
+- passwords in URLs and `Bearer` tokens;
+- common `password=`, `token=`, and `secret=` assignments;
+- the project directory (`<project>`), your home directory (`%USERPROFILE%`),
+  and `%LOCALAPPDATA%`, in raw and JSON-escaped form.
+
+All service `env` values and command arguments in the copied configuration are
+replaced regardless of their names.
+
+The bundle contains the doctor report, an environment summary, the redacted
+configuration, redacted runtime state without the IPC token, the tail of
+`.burrow/daemon.log`, and up to ten recent crash notes for this project.
+Service logs are excluded because Burrow does not control what applications
+print; `environment.json` lists their names and sizes so a maintainer can ask
+for a specific one.
+
+Redaction is best-effort, not a guarantee. It cannot recognize a secret Burrow
+never saw and that does not match a known pattern, and it deliberately does not
+replace very short values globally. Review a bundle before sharing it; the
+bundled `README.txt` says the same.
+
+Crash notes are written only when the CLI panics. They live under
+`%LOCALAPPDATA%\burrow\crashes` (the temporary directory when `LOCALAPPDATA` is
+unavailable) as JSON and are never transmitted. They can contain the panic
+message, source location, and a backtrace. Delete the directory at any time;
+`doctor` only reads it.
+
 ## Network exposure
 
 By default the reverse proxy binds to `127.0.0.1`. If any routed service sets
@@ -293,6 +330,9 @@ Be explicit about the boundary:
 - **Denial of service.** CPU and memory caps help, but a service can still
   exhaust disk, ports, or other shared resources within your account's limits.
 - **Secrets in logs.** Burrow does not scan or redact service output.
+- **Secrets in diagnostic bundles.** Bundle redaction is best-effort and
+  pattern-based. A secret Burrow never saw, or one that does not match a known
+  pattern, can survive in copied text. Review a bundle before sharing it.
 
 ## Hardening checklist
 

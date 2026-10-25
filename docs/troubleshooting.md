@@ -10,7 +10,9 @@ burrow logs
 `burrow doctor` checks the platform, elevation, configuration, cache, trust,
 secrets, packages, fixed ports, command resolution, daemon liveness, and proxy
 exposure. Every failure includes a remedy. `--json` produces the same report for
-scripts and exits `1` when any check fails.
+scripts and exits `1` when any check fails. `--report` also writes a redacted
+diagnostic bundle to `.burrow/reports/` (or `--report-dir <DIR>`) and prints its
+path; the bundle stays on the machine and is never uploaded.
 
 `burrow logs` reads the authenticated control socket, so it shows live output
 only while the project daemon is running. The raw files are also on disk:
@@ -394,11 +396,18 @@ Collect the following before opening an issue:
 
 ```powershell
 burrow --version
-burrow doctor --json
+burrow doctor --report --json
 burrow status --json
 ```
 
-Include the `burrow.toml` with secrets removed, the exact command, the expected
-and actual behavior, and the relevant part of `.burrow/logs/` or
-`.burrow/daemon.log`. Never paste `.burrow/secrets`, `BURROW_SERVICE_PASSWORD`,
-or a connection URL containing a password.
+`doctor --report` writes a local zip with the report, an environment summary,
+redacted `burrow.toml` and `.burrow/state.json`, the tail of
+`.burrow/daemon.log`, and up to 10 recent crash notes for this project. It is
+created locally and is not uploaded. Review it before attaching it.
+
+Service logs are intentionally excluded because they can contain arbitrary
+application output. If a maintainer asks for one, include only the relevant
+lines with secrets removed. Never paste `.burrow/secrets`,
+`BURROW_SERVICE_PASSWORD`, `burrow env <service>` output, a full
+`.burrow/state.json`, or a connection URL containing a password. Redaction in
+the bundle is best-effort, not a guarantee.

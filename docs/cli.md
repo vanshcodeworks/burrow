@@ -253,9 +253,38 @@ generates a secret, or binds a port. Checks include:
   sockets owned by supervised process trees and warns when a service listens on
   a non-loopback address without `expose = true`.
 
-`--json` emits `{ "ok": bool, "project", "project_dir", "summary": {"ok",
-"warnings", "failures"}, "checks": [...] }`. Each check has `name`, `status`
-(`ok`, `warn`, `fail`), `detail`, and an optional `remedy`.
+`--json` emits `{ "ok": bool, "generated_at", "burrow_version", "project",
+"project_dir", "report_path"?, "summary": {"ok", "warnings", "failures"},
+"checks": [...] }`. Each check has `name`, `status` (`ok`, `warn`, `fail`),
+`detail`, and an optional `remedy`.
+
+`--report` writes a redacted diagnostic bundle and prints its path. Nothing is
+uploaded. `--report-dir <DIR>` writes the bundle there instead of
+`.burrow/reports/` and implies `--report`; a relative directory is resolved
+against the current directory. The bundle contains:
+
+| Entry | Contents |
+| --- | --- |
+| `README.txt` | what the bundle is and how redaction works |
+| `report.json` | the same report as `doctor --json` |
+| `environment.json` | OS, architecture, elevation, redacted paths, service-log names and sizes |
+| `config.redacted.json` | `burrow.toml` with environment values and command arguments replaced |
+| `state.redacted.json` | `.burrow/state.json` without the IPC token, when state exists |
+| `daemon-log.txt` | tail of `.burrow/daemon.log` |
+| `crashes/*.json` | up to 10 recent crash notes for this project or with no project recorded |
+
+Known secrets, the state token, URL passwords, Bearer tokens, and common
+password/token/secret assignments are replaced with `<redacted>`. The project
+directory becomes `<project>`; the home directory and `%LOCALAPPDATA%` become
+`%USERPROFILE%` and `%LOCALAPPDATA%` placeholders. Redaction is best-effort;
+review the bundle before sharing it. Service logs are not included because they
+can contain arbitrary application output; `environment.json` lists their file
+names and sizes.
+
+Crash notes are written only when the CLI panics, as JSON under
+`%LOCALAPPDATA%\burrow\crashes` (or the temporary directory when
+`LOCALAPPDATA` is unavailable). They are local files and are never sent
+anywhere.
 
 ### `burrow top`
 

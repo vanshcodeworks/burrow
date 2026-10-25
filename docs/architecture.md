@@ -215,14 +215,24 @@ Unrecognized dev servers still get `PORT` in their environment, but no route or
 health check, plus a comment explaining what to add after confirming that the
 server honors the variable.
 
-`burrow doctor` is read-only. It never downloads a package, generates a secret,
-or binds a port. It checks the platform and elevation state, `burrow.toml`,
-cache location and writability, trust approval, secrets, package completeness,
-fixed ports, command resolution, daemon liveness and config drift, and proxy
-exposure. Every failure includes a remedy; `--json` emits the same report for
-scripts, and the command exits nonzero when any check fails. Running elevated is
-reported as a warning because PostgreSQL's Windows build refuses to initialize
-with an administrator token.
+`burrow doctor` checks are read-only. They never download a package, generate a
+secret, or bind a port. They cover the platform and elevation state,
+`burrow.toml`, cache location and writability, trust approval, secrets, package
+completeness, fixed ports, command resolution, daemon liveness and config drift,
+proxy exposure, and supervised TCP listeners. Every failure includes a remedy;
+`--json` emits the same report for scripts, and the command exits nonzero when
+any check fails. Running elevated is reported as a warning because PostgreSQL's
+Windows build refuses to initialize with an administrator token.
+
+`--report` additionally writes a local, redacted diagnostic zip and prints its
+path; nothing is uploaded. `--report-dir <DIR>` overrides the default
+`.burrow/reports/` location and implies `--report`. The bundle contains the
+report, an environment summary, redacted configuration and state, the daemon-log
+tail, and up to ten recent crash notes. The CLI installs a panic hook that
+writes a structured note under `%LOCALAPPDATA%\burrow\crashes` before chaining
+to the previous hook; the hook only records, and `doctor` only reads. Redaction
+and its limits are described in
+[ADR 0009](decisions/0009-diagnostic-bundles.md).
 
 `burrow top` requires an interactive terminal and refreshes once per second. It
 reads the same authenticated control socket as `status` and `logs`, so it shows

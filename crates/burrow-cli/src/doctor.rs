@@ -7,6 +7,7 @@
 use std::collections::BTreeMap;
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use anyhow::{bail, Result};
 use burrow_pkg::{Cache, Registry};
@@ -15,6 +16,7 @@ use serde::Serialize;
 use crate::commandline;
 use crate::commands::Options;
 use crate::control;
+use crate::diagnostic;
 use crate::project::{self, Project, SecretsFile};
 use crate::state::RuntimeState;
 use crate::win;
@@ -71,8 +73,12 @@ impl Check {
 #[derive(Debug, Serialize)]
 struct Report {
     ok: bool,
+    generated_at: String,
+    burrow_version: String,
     project: String,
     project_dir: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    report_path: Option<PathBuf>,
     summary: Summary,
     checks: Vec<Check>,
 }
@@ -85,7 +91,11 @@ struct Summary {
 }
 
 /// Implements `burrow doctor`.
-pub async fn run(options: &Options) -> Result<()> {
+pub async fn run(
+    options: &Options,
+    report_requested: bool,
+    report_dir: Option<PathBuf>,
+) -> Result<()> {
     let directory = project_directory(options)?;
     let mut checks = Vec::new();
 
@@ -163,18 +173,53 @@ pub async fn run(options: &Options) -> Result<()> {
                 .unwrap_or_else(|| "project".to_owned())
         });
 
-    let report = Report {
+    let generated_at = humantime::format_rfc3339_seconds(SystemTime::now()).to_string();
+    let mut report = Report {
         ok: summary.failures == 0,
+        generated_at,
+        burrow_version: env!("CARGO_PKG_VERSION").to_owned(),
         project: project_name,
         project_dir: directory.clone(),
+        report_path: None,
         summary,
         checks,
     };
+
+    let mut bundle_error = None;
+    if report_requested || report_dir.is_some() {
+        match diagnostic::bundle_path(&directory, report_dir.as_deref()) {
+            Ok(path) => {
+                report.report_path = Some(path.clone());
+                let state = live_state
+                    .as_ref()
+                    .cloned()
+                    .or_else(|| RuntimeState::read(&directory).ok().flatten());
+                let bundle = diagnostic::BundleOptions {
+                    project_dir: &directory,
+                    project: project.as_ref(),
+                    state: state.as_ref(),
+                    report: serde_json::to_value(&report)?,
+                    generated_at: &report.generated_at,
+                };
+                let result = diagnostic::write_bundle(&bundle, &path);
+                drop(bundle);
+                if let Err(error) = result {
+                    report.report_path = None;
+                    bundle_error = Some(error);
+                }
+            }
+            Err(error) => bundle_error = Some(error),
+        }
+    }
 
     if options.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         print_human(&report);
+    }
+
+    if let Some(error) = bundle_error {
+        return Err(error);
     }
 
     if report.summary.failures > 0 {
@@ -941,6 +986,13 @@ fn print_human(report: &Report) {
         summary.failures,
         if summary.failures == 1 { "" } else { "s" }
     );
+    if let Some(path) = &report.report_path {
+        let _ = writeln!(
+            output,
+            "\nreport: {}\n        created locally; nothing was uploaded",
+            path.display()
+        );
+    }
 }
 
 fn single_line(value: &str) -> String {

@@ -4,7 +4,7 @@
 //! with another test. Windows only, like the rest of Burrow.
 
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -902,6 +902,181 @@ fn doctor_fails_without_a_config_file() {
         .expect("checks list")
         .iter()
         .any(|check| check["name"] == "config" && check["status"] == "fail"));
+    assert!(stderr(&output).contains("doctor found"));
+}
+
+fn zip_entries(path: &Path) -> Vec<(String, String)> {
+    let file = fs::File::open(path).expect("open diagnostic bundle");
+    let mut archive = zip::ZipArchive::new(file).expect("read diagnostic bundle");
+    let mut entries = Vec::new();
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).expect("bundle entry");
+        let name = entry.name().expect("entry name").into_owned();
+        let mut contents = String::new();
+        entry.read_to_string(&mut contents).expect("read entry");
+        entries.push((name, contents));
+    }
+    entries
+}
+
+#[test]
+fn doctor_report_writes_a_redacted_local_bundle() {
+    let config = "[project]\nname = \"reported\"\n\n\
+                  [services.api]\n\
+                  run = 'cmd /C ping -n 30 127.0.0.1 > NUL'\n\n\
+                  [services.api.env]\n\
+                  API_TOKEN = \"env-secret-value\"\n";
+    let project = TestProject::new(config);
+    fs::create_dir_all(project.burrow_dir()).expect("create .burrow");
+    fs::write(
+        project.burrow_dir().join("secrets"),
+        r#"{"version":0,"secrets":{"api":"known-secret-0123456789"}}"#,
+    )
+    .expect("write secrets");
+    fs::write(
+        project.burrow_dir().join("daemon.log"),
+        format!(
+            "started\npassword=log-secret\npath {}\n",
+            project.path().display()
+        ),
+    )
+    .expect("write daemon log");
+
+    let isolated = tempfile::tempdir().expect("isolated local app data");
+    let crash_dir = isolated.path().join("burrow").join("crashes");
+    fs::create_dir_all(&crash_dir).expect("create crash directory");
+    let canonical = project.path().canonicalize().expect("canonical project");
+    let note = serde_json::json!({
+        "version": 1,
+        "timestamp": "2026-10-26T12:00:00.000Z",
+        "unix_ms": 1,
+        "pid": 42,
+        "thread": "main",
+        "burrow_version": "0.1.0",
+        "os": "windows",
+        "arch": "x86_64",
+        "project_dir": canonical,
+        "message": "password=crash-secret",
+        "location": "src/main.rs:1:1",
+    });
+    fs::write(
+        crash_dir.join("crash-1-42.json"),
+        serde_json::to_vec_pretty(&note).expect("encode crash note"),
+    )
+    .expect("write crash note");
+
+    let output = burrow()
+        .env("LOCALAPPDATA", isolated.path())
+        .arg("--project")
+        .arg(project.path())
+        .args(["doctor", "--report", "--json"])
+        .output()
+        .expect("run doctor");
+    assert!(output.status.success(), "{}", stderr(&output));
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("doctor --json prints JSON");
+    let path = PathBuf::from(report["report_path"].as_str().expect("report_path"));
+    assert!(path.is_file(), "missing {}", path.display());
+    assert_eq!(report["burrow_version"], "0.1.0");
+    assert!(report["generated_at"]
+        .as_str()
+        .is_some_and(|value| value.contains('T')));
+
+    let entries = zip_entries(&path);
+    let names: Vec<&str> = entries.iter().map(|(name, _)| name.as_str()).collect();
+    for expected in [
+        "README.txt",
+        "report.json",
+        "environment.json",
+        "config.redacted.json",
+        "daemon-log.txt",
+        "crashes/crash-1-42.json",
+    ] {
+        assert!(names.contains(&expected), "missing {expected}: {names:?}");
+    }
+    let project_path = project.path().display().to_string();
+    for (name, contents) in &entries {
+        for secret in [
+            "known-secret-0123456789",
+            "env-secret-value",
+            "log-secret",
+            "crash-secret",
+        ] {
+            assert!(
+                !contents.contains(secret),
+                "{name} leaked {secret}:\n{contents}"
+            );
+        }
+        assert!(
+            !contents.contains(project_path.as_str()),
+            "{name} leaked the project path:\n{contents}"
+        );
+        if name.ends_with(".json") {
+            serde_json::from_str::<serde_json::Value>(contents)
+                .unwrap_or_else(|error| panic!("{name} is not valid JSON: {error}\n{contents}"));
+        }
+    }
+
+    let human = burrow()
+        .env("LOCALAPPDATA", isolated.path())
+        .arg("--project")
+        .arg(project.path())
+        .args(["doctor", "--report"])
+        .output()
+        .expect("run doctor");
+    assert!(human.status.success(), "{}", stderr(&human));
+    assert!(stdout(&human).contains("created locally; nothing was uploaded"));
+}
+
+#[test]
+fn doctor_report_dir_implies_report_and_overrides_the_default() {
+    let config = format!(
+        "[project]\nname = \"reported\"\n\n[services.api]\n{}\n",
+        powershell_listener()
+    );
+    let project = TestProject::new(&config);
+    let reports = tempfile::tempdir().expect("report directory");
+    let output = run_in(
+        project.path(),
+        &[
+            "doctor",
+            "--report-dir",
+            reports.path().to_str().expect("utf-8 report path"),
+            "--json",
+        ],
+    );
+    assert!(output.status.success(), "{}", stderr(&output));
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("doctor --json prints JSON");
+    let path = PathBuf::from(report["report_path"].as_str().expect("report_path"));
+    assert_eq!(path.parent(), Some(reports.path()));
+    assert!(path.is_file());
+    assert!(
+        !project.burrow_dir().join("reports").exists(),
+        "--report-dir must override the default directory"
+    );
+}
+
+#[test]
+fn doctor_report_works_without_a_config_file() {
+    let dir = tempfile::tempdir().expect("create project directory");
+    let output = run_in(dir.path(), &["doctor", "--report", "--json"]);
+    assert!(!output.status.success());
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("doctor --json prints JSON");
+    assert_eq!(report["ok"], false);
+    let path = PathBuf::from(report["report_path"].as_str().expect("report_path"));
+    let entries = zip_entries(&path);
+    let names: Vec<&str> = entries.iter().map(|(name, _)| name.as_str()).collect();
+    assert!(names.contains(&"report.json"));
+    assert!(!names.contains(&"config.redacted.json"));
+    let contents = entries
+        .iter()
+        .find(|(name, _)| name == "report.json")
+        .map(|(_, contents)| contents.as_str())
+        .expect("report entry");
+    let bundled: serde_json::Value = serde_json::from_str(contents).expect("bundled report");
+    assert_eq!(bundled["ok"], false);
     assert!(stderr(&output).contains("doctor found"));
 }
 

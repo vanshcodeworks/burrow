@@ -389,3 +389,65 @@ filesystems.
 
 **Next**: A6 `doctor --report` (redacted bundle and structured local crash
 notes), then the Phase 1 compatibility matrix and clean-machine pass.
+
+## 2026-10-26 - cycle 11: local redacted diagnostic bundles (A6)
+
+**Task**: Close Phase 0 with `burrow doctor --report` and structured local crash
+notes, without telemetry or uploads.
+
+**Outcome**: `doctor --report` writes a zip (default
+`<project>/.burrow/reports/burrow-report-<stamp>-<pid>.zip`;
+`--report-dir <DIR>` overrides and implies `--report`) and prints its path.
+The CLI installs a panic hook that writes a structured note before chaining to
+the previous hook. Nothing leaves the machine.
+
+**Bundle contents**: `README.txt`, `report.json`, `environment.json`, redacted
+`config.redacted.json`, redacted `state.redacted.json` when state exists, a
+256 KiB tail of `.burrow/daemon.log`, and up to ten crash notes matching the
+current project plus notes with no project. Service logs are excluded because
+Burrow cannot vouch for arbitrary application output; `environment.json` lists
+their names and sizes.
+
+**Redaction**: known values from `.burrow/secrets`, the state token, sensitive
+environment values, URL passwords, Bearer tokens, and common
+`password`/`token`/`secret` assignments become `<redacted>`. The project
+directory, `%USERPROFILE%`, and `%LOCALAPPDATA%` become placeholders. Every
+service `env` value and command argument in the copied config is replaced
+regardless of its name.
+
+**Two real bugs found by inspecting a manual release-binary bundle**:
+
+1. Paths in JSON were escaped (`C:\\Users\\...`) and did not match the raw
+   path needles, so `report.json` and crash notes leaked the project and cache
+   paths. `push_path_variants` now also adds the JSON-escaped form.
+2. The unquoted-assignment scanner consumed the closing `"` of a JSON string,
+   producing `"message": "password=<redacted>,` and invalid JSON. It now stops
+   at `"` and `'`; `redaction_keeps_json_valid` and the integration test parse
+   every JSON entry.
+
+**Manual evidence**: release binary with `LOCALAPPDATA` pointed at an isolated
+directory; bundle 2,494 bytes; entries `README.txt`, `report.json`,
+`environment.json`, `config.redacted.json`, `daemon-log.txt`,
+`crashes/crash-1-42.json`; scan for raw and JSON-escaped secrets/paths found
+none; all four JSON entries parsed. Crash note showed
+`project_dir: "<project>"` and `message: "password=<redacted>"`.
+
+**Commands and real results**:
+
+- `cargo fmt --all --check` - green.
+- `cargo clippy --workspace --all-targets -- -D warnings` - green.
+- `cargo test --workspace --all-targets -- --test-threads=1` -
+  **202 passed, 0 failed across 23 suites** (15 new A6 tests: 5 crash unit,
+  7 bundle/redaction unit, 3 CLI integration).
+- `cargo audit` - green, 3 allowed transitive warnings (`paste`, `lru` x2).
+- `cargo build --workspace --release` - green in 53.33 s; a rebuild after the
+  redaction fix took 54.56 s.
+
+**Not verified**: the panic hook itself has no supported CLI panic path, so its
+end-to-end invocation is untested (the writer, reader, filtering, atomic rename,
+and redaction are tested); crash notes accumulate without automatic deletion;
+redaction remains best-effort and cannot recognize an unknown secret that
+matches no pattern.
+
+**Next**: Phase 1 - compatibility matrix (A5), clean-machine/README pass,
+time-to-first-success measurement, and error-message pass.

@@ -66,8 +66,15 @@
       properties, **1,840 generated cases**, all green.
 - [ ] **A5 Compatibility matrix doc**: Win10/11, non-ASCII paths, long paths,
       spaces, OneDrive dirs, non-admin. Manual test script + docs page.
-- [ ] **A6 Crash safety**: `burrow doctor --report` bundle (redacted);
-      structured local crash notes.
+- [x] **A6 Crash safety**: `burrow doctor --report` writes a local redacted
+      bundle (report, environment, redacted config/state, daemon-log tail, up
+      to 10 crash notes for the project); the CLI panic hook writes structured
+      notes under `%LOCALAPPDATA%\burrow\crashes`. Nothing is uploaded and
+      service logs are excluded by design. Tests: 5 crash unit, 7 bundle and
+      redaction unit, 3 CLI integration; a manual release-binary bundle was
+      checked for leaks and JSON validity. ADR 0009. Remaining gap: the hook
+      itself has no supported end-to-end panic path, and crash notes accumulate
+      without automatic deletion.
 - [x] **A-flake-1** `a_failed_health_check_stops_the_daemon_and_leaves_no_state`
       asserted < 20 s wall time and failed once under compile load. Relaxed to
       60 s; the health-check timeout itself is unchanged.

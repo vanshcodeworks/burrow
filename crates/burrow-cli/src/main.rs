@@ -12,7 +12,9 @@ mod commandline;
 mod commands;
 mod container;
 mod control;
+mod crash;
 mod daemon;
+mod diagnostic;
 mod doctor;
 mod init;
 mod project;
@@ -124,7 +126,15 @@ enum Command {
     },
 
     /// Diagnose common local environment problems.
-    Doctor,
+    Doctor {
+        /// Write a redacted diagnostic bundle and print its path.
+        #[arg(long)]
+        report: bool,
+
+        /// Directory for the diagnostic bundle (implies --report).
+        #[arg(long, value_name = "DIR")]
+        report_dir: Option<PathBuf>,
+    },
 
     /// Open the live terminal dashboard.
     Top,
@@ -208,6 +218,8 @@ enum PkgCommand {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     init_tracing(cli.verbose);
+    crash::install_hook();
+    crash::set_project_dir(project::resolve_directory(cli.project.clone()).ok());
     let options = commands::Options {
         project: cli.project,
         json: cli.json,
@@ -274,7 +286,9 @@ async fn run(command: Command, options: commands::Options) -> Result<()> {
         Command::Open { service } => commands::open(&options, service).await,
         Command::Env { service, format } => commands::env(&options, service, format).await,
         Command::Exec { service, cmd } => commands::exec(&options, service, cmd).await,
-        Command::Doctor => crate::doctor::run(&options).await,
+        Command::Doctor { report, report_dir } => {
+            crate::doctor::run(&options, report, report_dir).await
+        }
         Command::Top => crate::top::run(&options).await,
         Command::Pkg { command } => match command {
             Some(command) => run_pkg(command, &options).await,

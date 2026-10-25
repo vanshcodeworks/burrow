@@ -64,6 +64,22 @@ metadata at runtime.
 deletes that service's data directory; `burrow snapshot` and `burrow restore`
 copy it.
 
+## What does `burrow doctor --report` collect?
+
+It writes a local zip, by default to `.burrow/reports/`, and prints the path.
+The bundle contains the doctor report, an environment summary, `burrow.toml`
+with all environment values and command arguments replaced, `.burrow/state.json`
+without the IPC token, the tail of `.burrow/daemon.log`, and up to ten recent
+crash notes for the project. Known secrets, URL passwords, `Bearer` tokens, and
+common `password=`/`token=`/`secret=` assignments are replaced with
+`<redacted>`, and your project, home, and `%LOCALAPPDATA%` paths become
+placeholders.
+
+Nothing is uploaded. Service logs are deliberately excluded because they can
+contain arbitrary application output; `environment.json` lists their names and
+sizes instead. Redaction is best-effort, so review the bundle before sharing it.
+See [`security.md`](security.md#diagnostic-bundles).
+
 ## Are generated secrets encrypted?
 
 No. `.burrow/secrets` is plaintext JSON readable by your Windows account. It is
@@ -196,7 +212,10 @@ next install to download and verify packages again.
 
 ## Where do I report a bug?
 
-Open an issue using the repository's bug report template. Include
-`burrow --version`, `burrow doctor --json`, `burrow status --json`, the exact
-command, and the relevant logs with secrets removed. See
+Open an issue using the repository's bug report template. Run
+`burrow doctor --report --json` and attach the bundle it names; it is created
+locally and contains the report, redacted configuration and state, the daemon
+log tail, and recent crash notes. Include `burrow --version`, the exact command,
+and the expected and actual behavior. Review the bundle first, and add only the
+relevant lines of a service log if a maintainer asks. See
 [`troubleshooting.md`](troubleshooting.md#reporting-a-bug).
