@@ -72,7 +72,7 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | Two runnable examples | `examples/node-postgres`, `examples/python-postgres` with READMEs; node example exercised during phase-2 registry work (healthy); **no automated example smoke test in CI** | observed (gap queued E1) |
 | Full user documentation | `docs/`: getting-started, config-reference, registry, security, troubleshooting, FAQ, CLI, demo — updated this run for phase 2 | verified |
 | Release pipeline, `cargo install` support, winget/Scoop drafts | `.github/workflows/release.yml` + `packaging/`; README documents `cargo install --path ... --locked` (used to build locally during this run, equivalent source build); winget manifest is a draft placeholder by design | verified (drafts marked as drafts) |
-| README with only measured claims | "about two seconds" warm start ↔ 1.87 s measured; 373,254,386 bytes ↔ builtin test. The "fraction of the resources" headline has **no Docker comparison measurement yet** — the daemon is now running locally, comparison queued (E3) | partial (queued E3) |
+| README with only measured claims | "about two seconds" warm start ↔ 1.87 s measured; 373,254,386 bytes ↔ builtin test. The unsupported "fraction of the resources" headline was replaced with a factual native-services statement because no Docker comparison was measured; the table marks Docker resource and startup figures as "Not measured here" | verified |
 
 ## Phase 2
 
@@ -122,13 +122,24 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | A missing snapshot names the next command | `tests/cli.rs::snapshots_restore_data_atomically_and_reset_removes_it` now asserts that `restore missing` fails with `snapshot missing does not exist` and a `burrow snapshots` next step | verified |
 | Startup failures are actionable and leave no state or processes | Manual probes: bad command (`could not start ... The system cannot find the file specified. (0x80070002)`), 2 s health timeout (names service, attempts, duration, both logs), fixed port held by a listener (`port ... already in use; choose another port or use port = "auto"`). Each exited 1, removed `.burrow/state.json`, left zero `burrow` processes. Health-timeout and port-conflict behavior also covered by CLI integration tests | observed (manual); health timeout and port conflict also automated |
 
+## Phase 3-5 comparison claims (cycle 14)
+
+| Claim | Evidence | Status |
+| --- | --- | --- |
+| Every competitor claim in the landscape is tied to an official source with a retrieval date | `docs/comparisons/SOURCES.md` has 16 competitor sources (S1-S16), each with a URL and `2026-10-26`; `docs/comparisons/README.md` cites them as `[S1]`-`[S16]` | verified by source review |
+| The comparison states where each alternative is the better fit | Every tool section has a "Where it is a better fit than Burrow" subsection; `Where Burrow is the wrong choice` lists the boundary cases | verified by review |
+| The comparison makes no competitor performance claims | `Performance: what is measured and what is not` reports only Burrow numbers from `docs/benchmarks.md` and says no competitor was benchmarked; it explains why no Docker number exists | verified by review |
+| No competitor was run for the comparison | The method statement says so; Docker Desktop is installed but was not used, and Podman is absent. This is a documentation comparison, not a test of competitor behavior | observed (scope limit) |
+| The FAQ points readers at the comparison, not at `benchmarks.md` | `docs/faq.md` "Is Burrow a Docker replacement?" links `comparisons/README.md`, `benchmarks.md`, and `security.md` | verified by inspection |
+
 ## Gaps found by this audit (queued)
 
 1. ~~A2.5 secrets-scanning test~~ **closed**: `tests/secrets.rs` scans
    daemon.log, service logs, state.json, status/logs/env output, and a
    snapshot; positive control via `burrow env <service>`.
 2. E1 automated example smoke tests in CI (M6).
-3. E3 Docker Compose comparison measurement for the README headline (now
-   possible; engine running).
+3. E3 Docker Compose comparison measurement for the README headline; the
+   recorded benchmark had no Docker daemon, and the comparison page deliberately
+   reports no Docker number. A fresh, reproducible run remains.
 4. E5 end-to-end TUI session test (M5 covered by unit tests only).
 5. C13 podman verification of the container fallback.

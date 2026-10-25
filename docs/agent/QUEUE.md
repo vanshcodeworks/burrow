@@ -23,6 +23,26 @@
 - [ ] **Unverified compatibility rows**: ARM64, OneDrive/UNC, FAT/exFAT,
       third-party antivirus, `LongPathsEnabled=0`, 8.3-disabled volumes.
 
+## Phase 3-5 - launch content
+
+- [x] **Sourced landscape/comparisons**: `docs/comparisons/README.md` compares
+      Burrow with Docker Compose, Podman Compose, Process Compose, Overmind,
+      VS Code Dev Containers, WinSW, and NSSM. Every competitor claim maps to an
+      official source with a 2026-10-26 retrieval date in `SOURCES.md`; each
+      section states where the alternative is better. Linked from the README and
+      FAQ. No competitor was run or benchmarked.
+- [ ] **Reproducible benchmark suite vs Docker Compose where available**
+      (tracked as E3 below): the existing benchmark has no Docker number because
+      the daemon was not running. Start Docker Desktop, run the same example
+      with recorded machine specs and raw output, and skip any comparator that
+      is unavailable. Do not infer a number.
+- [ ] **Packaging, trust, and docs site**: release dry-run zip/checksums/SBOM
+      (D6), cargo-deny config (D1), signing plan, winget/Scoop manifests with
+      real hashes after a human release, and the docs site (E2). A human
+      publishes.
+- [ ] **Launch kit drafts**: announcement copy, demo script, screenshots, and a
+      launch checklist. Drafts only; a human posts.
+
 ## Tier A - verification and hardening
 
 - [x] **A1 Claim audit**: full map in `CLAIMS.md`; 7 gaps found and queued
@@ -148,7 +168,10 @@
 
 - [ ] E1 Examples with smoke tests (Next.js+Postgres, FastAPI+Postgres+Mailpit).
 - [ ] E2 Docs site (mdBook) — defer until content settles.
-- [ ] E3 Benchmark suite vs docker compose where available.
+- [ ] E3 (Phase 3-5) Benchmark suite vs docker compose where available; the
+      recorded benchmark has no Docker number because the daemon was not
+      running. Record machine specs and raw data, or state why a comparator is
+      unavailable.
 - [ ] E5 CLI/TUI polish: plain mode audit, narrow terminals.
 
 ## Done (this run)

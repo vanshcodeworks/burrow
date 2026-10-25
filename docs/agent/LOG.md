@@ -608,3 +608,83 @@ a CI execution of the compatibility probe. The health-timeout message says
 **Next**: close the remaining Phase 1 evidence gaps where possible, then move
 to the sourced landscape/comparisons and launch drafts. Do not write
 `LAUNCH_READINESS.md` until the blocked rows are resolved.
+
+## 2026-10-26 - cycle 14: sourced landscape and fair comparisons
+
+**Task**: Build the Phase 3 sourced landscape/comparisons, link it from the
+public docs, and correct stale agent notes.
+
+**Method**: Used only official project or vendor documentation. Every page was
+retrieved on 2026-10-26 and recorded in `docs/comparisons/SOURCES.md` with the
+specific claims it supports. No competitor was run or benchmarked
+for the page. "Not documented" is not treated as "does not exist"; the page
+states where each alternative is better and where Burrow is the wrong tool.
+
+**Sources** (S1-S16): Docker Compose overview; Docker Desktop WSL 2 backend;
+Docker Desktop Windows install requirements; Docker Desktop license; Compose
+startup order; Podman machine; Podman Compose; Process Compose; Process Compose
+v1.122.0 release assets; Overmind; VS Code Dev Containers; Development
+Containers specification; WinSW; NSSM; Docker overview (isolation, daemon,
+images); Podman project site (open source, Apache-2.0).
+
+**What the comparison covers**:
+
+- Docker Desktop + Compose: Linux containers through Docker Desktop's default
+  WSL 2 backend, isolation, ecosystem, cross-platform use, health-gated
+  dependencies, and Docker Desktop's free/paid licensing tiers. The page notes
+  that WSL 2's dynamic memory allocation makes a single Docker RSS number
+  misleading and that no Docker benchmark exists here.
+- Podman + podman-compose: Compose Spec with a Podman backend, rootless and
+  daemonless, but Podman on Windows still requires a WSL or Hyper-V machine.
+- Process Compose: non-containerized orchestration, single Go binary, Windows
+  amd64/arm64 releases, dependencies, health checks, TUI, REST API, replicas,
+  namespaces, scheduled processes, file watching, MCP, and more.
+- Overmind: Procfile + tmux on Linux/BSD/macOS only; process scaling, attach,
+  restart, and `PORT` assignment.
+- VS Code Dev Containers: container as the development environment, requires
+  Docker, Windows container images unsupported, bind-mount overhead on Windows
+  and macOS.
+- WinSW/NSSM: Windows service wrappers, adjacent rather than direct
+  alternatives; better for boot-time/SCM-managed services.
+
+**Public docs**: linked `docs/comparisons/README.md` and `SOURCES.md` from the
+README "Fair comparison" section and documentation list. Fixed the FAQ's
+"Is Burrow a Docker replacement?" answer, which incorrectly said the fair
+comparison was in `benchmarks.md`; it now points to the comparison,
+`benchmarks.md`, and `security.md`. Also replaced the README headline's
+unsupported "fraction of the resources" claim (no Docker comparison was
+measured) with a factual native-services statement, and qualified the
+"every service is native" wording for the optional container fallback.
+
+**Agent docs**: added a Phase 3-5 launch-content section to `QUEUE.md` (the
+comparison is checked; the Docker Compose benchmark, packaging/trust/docs site,
+and launch kit remain), added a Phase 3-5 comparison-claims table to
+`CLAIMS.md`, rewrote `STATE.md`, and replaced the stale cargo-audit failure in
+`NEEDS_HUMAN.md` with the real human-only actions. `cargo-audit` 0.22.2 works.
+
+**Commands and real results**:
+
+- `cargo fmt --all --check` - green.
+- `cargo clippy --workspace --all-targets -- -D warnings` - green.
+- `cargo test --workspace --all-targets -- --test-threads=1` -
+  **211 passed, 0 failed across 23 suites**.
+- `cargo audit` - green, 3 allowed transitive warnings (`paste` unmaintained;
+  `lru` unsound x2).
+- `cargo build --workspace --release` - green in 0.66 s (no Rust changes;
+  cached artifacts from cycle 13).
+- No processes or temp roots were created by this docs-only cycle; no `burrow`
+  process was left running.
+
+**Not verified**: no competitor was run, so every competitor
+statement is documentation-based, not behavioral. There is still no Docker
+Compose head-to-head measurement; the recorded benchmark had no Docker daemon.
+Podman remains absent, so Podman parity and podman-compose behavior are
+unverified. Docker Desktop's dynamic memory allocation means its footprint is
+not directly comparable to Burrow's daemon RSS. Competitor docs may change; the
+source ledger must be updated with the claim. `cargo-deny` remains absent.
+
+**Next**: a reproducible benchmark run against Docker Compose when the daemon is
+available (record machine specs and raw data; skip unavailable comparators),
+then packaging/trust/docs-site work and launch-kit drafts. Do not write
+`LAUNCH_READINESS.md` until the Phase 1 blockers and human-only launch steps are
+resolved.

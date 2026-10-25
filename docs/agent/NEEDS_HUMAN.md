@@ -1,12 +1,20 @@
 # Needs human (log and continue)
 
-- **cargo-audit local install fails** (build error, os error 3, on this
-  machine). CI runs audit on windows-latest, so coverage exists; a local
-  run needs a working install or a fixed toolchain. Not blocking.
-- **Publishing** (crates.io, winget, Scoop, GitHub releases, signing
-  certificates) remains a human action per the hard rules; nothing here
-  publishes.
-- **Hardware/OS matrix** (Windows 11 ARM64, corporate AV interference,
-  OneDrive-synced project dirs, non-admin accounts on locked-down
-  machines) cannot be exercised on this machine — needs a human with
-  that hardware or CI runners.
+- **Publishing, signing, and package-manager submission** (crates.io, GitHub
+  release, winget, Scoop, signing certificates) remain human actions per the
+  hard rules. Nothing here publishes, tags, pushes to `main`, or posts.
+- **Clean-machine, VM, or CI execution**: no VM, Windows Sandbox, or clean CI
+  runner is available here. The compatibility probe is configured for CI but has
+  not run remotely. Windows 10, ARM64, a true standard-user account,
+  OneDrive/UNC, FAT/exFAT, corporate antivirus, `LongPathsEnabled=0`, and
+  8.3-disabled volumes remain unverified.
+- **Podman parity and a Docker Compose head-to-head benchmark**: Docker Desktop
+  is installed but Podman is absent, and the Docker daemon was not running for
+  the recorded benchmark. A human with both engines can run a like-for-like
+  comparison; skip and document any comparator that is unavailable.
+- **Review before publishing**: the sourced comparison and any launch drafts
+  should be reviewed by a human for accuracy and tone before they are posted.
+  The comparison deliberately makes no competitor performance claims.
+
+Local `cargo-audit` 0.22.2 is installed and working; the earlier note about a
+failed local install is obsolete.
