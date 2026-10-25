@@ -8,7 +8,7 @@ better fit, and links every competitor claim to official documentation.
 **Competitor facts come from documentation; one benchmark was run.** The claims
 below are tied to the official pages listed in [SOURCES.md](SOURCES.md), all
 retrieved on 2026-10-26. A Docker Compose startup benchmark was run separately on
-2026-10-25 and is reported in [`docs/benchmarks.md`](../benchmarks.md); it does
+2026-10-25 UTC and is reported in [`docs/benchmarks.md`](../benchmarks.md); it does
 not change the documentation-based claims below. No other competitor was run.
 Burrow's own measurements come from [`docs/benchmarks.md`](../benchmarks.md).
 Last reviewed: 2026-10-26.
@@ -85,7 +85,7 @@ Burrow is MIT OR Apache-2.0.
 
 **Fairness note on resources.** Docker Desktop's WSL 2 backend uses dynamic
 memory allocation and requests CPU and memory as needed rather than reserving a
-fixed block [S2]. The 2026-10-25 head-to-head reports container memory and
+fixed block [S2]. The 2026-10-25 UTC head-to-head reports container memory and
 startup, but container memory excludes Docker Desktop's VM and daemon, so
 Burrow's daemon RSS should not be read as a like-for-like total. See
 [`docs/benchmarks.md`](../benchmarks.md) for the method and caveats.
@@ -257,7 +257,7 @@ Be honest about the boundary:
 
 Burrow's original numbers are from [`docs/benchmarks.md`](../benchmarks.md),
 measured on one Windows 11 Home machine (Ryzen 7 4800H, 15.4 GB RAM) with the
-`examples/node-postgres` project. A separate head-to-head on 2026-10-25 used
+`examples/node-postgres` project. A separate head-to-head on 2026-10-25 UTC used
 Docker Desktop 24.0.7 with Compose v2.23.3-desktop.2 on the same machine,
 project, schema, seed, and `/api/todos` endpoint. Both stacks were measured to
 HTTP 200.

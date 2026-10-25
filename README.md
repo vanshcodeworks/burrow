@@ -109,7 +109,7 @@ descendant process; PostgreSQL accounts for roughly 100 MB and Node for roughly
 Both published targets were met: the daemon stays below 20 MB idle, and a warm
 `burrow up` is well under 10 seconds. The method and machine details are in
 [`docs/benchmarks.md`](docs/benchmarks.md). A Docker Desktop 24.0.7 + Compose
-head-to-head on 2026-10-25 used the same example and endpoint: warm startup was
+head-to-head on 2026-10-25 UTC used the same example and endpoint: warm startup was
 **1.84-1.88 s** for Burrow and **1.92-3.20 s** for Compose (median 1.87 s vs
 2.08 s), while Compose initialized empty application data faster (**4.11 s** vs
 **10.7 s**). Image pull/build and Burrow's package download are setup and
