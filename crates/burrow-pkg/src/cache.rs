@@ -911,4 +911,180 @@ server = "bin/server.exe"
         );
         assert!(registry().resolve("demo").is_ok());
     }
+
+    /// Serves one fixed byte string with HTTP range support and records every
+    /// request head. Used to prove the resume path without touching network.
+    async fn range_server(
+        content: &'static [u8],
+        requests: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("bind range server");
+        let port = listener.local_addr().expect("address").port();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    break;
+                };
+                let requests = std::sync::Arc::clone(&requests);
+                tokio::spawn(async move {
+                    let mut buffer = Vec::new();
+                    let mut chunk = [0_u8; 1024];
+                    loop {
+                        let read = stream.read(&mut chunk).await.expect("read request");
+                        buffer.extend_from_slice(&chunk[..read]);
+                        if buffer.windows(4).any(|window| window == b"\r\n\r\n") || read == 0 {
+                            break;
+                        }
+                    }
+                    let head = String::from_utf8_lossy(&buffer).into_owned();
+                    let range = head
+                        .lines()
+                        .find(|line| line.to_ascii_lowercase().starts_with("range:"))
+                        .and_then(|line| line.split_once(':'))
+                        .map(|(_, value)| value.trim().to_owned());
+
+                    let (status, extra, body) = match &range {
+                        Some(value) => {
+                            let offset: u64 = value
+                                .strip_prefix("bytes=")
+                                .and_then(|rest| rest.split_once('-'))
+                                .and_then(|(start, _)| start.parse().ok())
+                                .unwrap_or(0);
+                            let end = content.len() as u64 - 1;
+                            (
+                                "HTTP/1.1 206 Partial Content",
+                                format!(
+                                    "Content-Range: bytes {offset}-{end}/{}\r\n",
+                                    content.len()
+                                ),
+                                &content[offset as usize..],
+                            )
+                        }
+                        None => ("HTTP/1.1 200 OK", String::new(), content),
+                    };
+                    requests.lock().expect("requests lock").push(head);
+
+                    let response = format!(
+                        "{status}\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n",
+                        body.len()
+                    );
+                    stream
+                        .write_all(response.as_bytes())
+                        .await
+                        .expect("write head");
+                    stream.write_all(body).await.expect("write body");
+                });
+            }
+        });
+        port
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_interrupted_download_resumes_from_the_part_file() {
+        use crate::registry::{PackageVersion, Platform, Resolved};
+        use std::collections::BTreeMap;
+        use std::sync::{Arc, Mutex};
+
+        use sha2::Digest;
+
+        const PREFIX: usize = 16 * 1024;
+        const TOTAL: usize = 64 * 1024;
+        static CONTENT: &[u8] = &[0xAB_u8; TOTAL];
+        let digest = sha2::Sha256::digest(CONTENT);
+        let hash = hex::encode(digest);
+
+        let requests: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let port = range_server(CONTENT, Arc::clone(&requests)).await;
+        let url = format!("http://127.0.0.1:{port}/demo.bin");
+
+        let platform = Platform {
+            url: url.clone(),
+            sha256: hash.clone(),
+            size: TOTAL as u64,
+            archive: ArchiveKind::Raw,
+            binaries: BTreeMap::from([("bin".to_owned(), "bin".to_owned())]),
+        };
+        let version = PackageVersion {
+            version: "1.0".to_owned(),
+            platforms: BTreeMap::from([("windows-x86_64".to_owned(), platform)]),
+            run: Some(crate::registry::TemplateCommand {
+                program: "bin".to_owned(),
+                args: Vec::new(),
+            }),
+            stop: None,
+            init: Vec::new(),
+            seed: None,
+            url_template: None,
+            health: None,
+            default_port: None,
+        };
+        let entry = crate::registry::Entry {
+            name: "resumedemo".to_owned(),
+            description: "Resume demo".to_owned(),
+            license: "MIT".to_owned(),
+            upstream: "https://example.com/demo".to_owned(),
+            source: "https://example.com/demo/downloads".to_owned(),
+            unsupported_native: None,
+            versions: BTreeMap::from([("1.0".to_owned(), version)]),
+        };
+        let package_version = entry.versions.get("1.0").expect("version");
+        let package_platform = package_version
+            .platforms
+            .get("windows-x86_64")
+            .expect("platform");
+        let resolved = Resolved {
+            entry: &entry,
+            version: package_version,
+            platform: package_platform,
+        };
+
+        let directory = tempfile::tempdir().expect("temp");
+        let cache = Cache::at(directory.path().join("cache"));
+        cache.prepare().expect("prepare");
+
+        // Simulate an interrupted download: a partial file with the first
+        // PREFIX bytes, as a crashed run would have left behind.
+        let archive = cache.archive_path(resolved.platform);
+        let part = std::path::PathBuf::from(format!("{}.part", archive.display()));
+        std::fs::write(&part, &CONTENT[..PREFIX]).expect("seed part file");
+
+        let mut progress_seen = Vec::new();
+        let package = cache
+            .ensure(&resolved, &mut |progress| {
+                progress_seen.push(progress.downloaded)
+            })
+            .await
+            .expect("resume and complete");
+
+        // The first progress report must start at the part-file offset, and
+        // the server must have received exactly that range request.
+        assert_eq!(
+            progress_seen.first(),
+            Some(&(PREFIX as u64)),
+            "resume did not start from the part file offset: {progress_seen:?}"
+        );
+        let heads = requests.lock().expect("requests lock").clone();
+        assert!(
+            heads
+                .iter()
+                .any(|head| head.to_ascii_lowercase().contains("range: bytes=16384-")),
+            "the server never saw the resume range request:\n{heads:?}"
+        );
+
+        // The completed package is verified and the partial file is gone.
+        assert!(package.join("bin").is_file(), "raw binary was extracted");
+        assert_eq!(
+            std::fs::read(package.join("bin"))
+                .expect("read binary")
+                .len(),
+            TOTAL
+        );
+        assert!(archive.is_file(), "final archive missing");
+        assert!(!part.exists(), "the .part file survived completion");
+        assert!(cache.marker(resolved.platform.sha256.as_str()).is_some());
+    }
 }
