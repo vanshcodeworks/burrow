@@ -144,8 +144,12 @@ impl RuntimeState {
                 return Err(error).with_context(|| format!("could not read {}", path.display()))
             }
         };
-        let state: Self = serde_json::from_str(&contents)
-            .with_context(|| format!("{} is not valid Burrow state", path.display()))?;
+        let state: Self = serde_json::from_str(&contents).with_context(|| {
+            format!(
+                "{} is not valid Burrow state\nhelp: if no Burrow daemon is running, delete the file and try again",
+                path.display()
+            )
+        })?;
         Ok(Some(state))
     }
 
