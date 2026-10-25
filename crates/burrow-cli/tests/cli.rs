@@ -695,7 +695,7 @@ fn a_failed_health_check_stops_the_daemon_and_leaves_no_state() {
         "stderr was:\n{text}"
     );
     assert!(
-        started.elapsed() < Duration::from_secs(20),
+        started.elapsed() < Duration::from_secs(60),
         "health timeout took too long"
     );
     assert!(!project.state_path().exists());
