@@ -526,3 +526,85 @@ snapshots, the dashboard, or containers. A clean-machine pass is still needed.
 
 **Next**: clean-machine/README pass, time-to-first-success measurement, and an
 error-message pass.
+
+## 2026-10-26 - cycle 13: time to first success and error-message pass
+
+**Task**: Follow the README as a new user with empty caches, measure time to
+first success, and fix misleading error messages.
+
+**Time-to-first-success method**: `git archive HEAD examples/node-postgres`
+into a fresh `%TEMP%` root; empty `CARGO_HOME`, `npm_config_cache`, and
+`BURROW_CACHE_DIR`; follow the README commands exactly and time each step with
+`Stopwatch`. The clock stopped when `status --json` reported both services
+healthy **and** `http://127.0.0.1:<api-port>/api/todos` returned a seeded HTTP
+200.
+
+**Real results**:
+
+- `cargo install --path crates\burrow-cli --locked` (empty `CARGO_HOME`):
+  **162.62 s**, 0.27 GB of crates downloaded, installed `burrow 0.1.0` runs.
+- `npm install` (empty npm cache): **3.19 s**, 14 packages.
+- `burrow up --detach --yes` (empty Burrow package cache): **79.43 s** to both
+  healthy and a seeded HTTP 200. The 356.0 MiB PostgreSQL download, SHA-256
+  verification, extraction, `initdb`, seed, and both health checks are inside
+  that time.
+- **Checkout to first successful request: 245.24 s (4 min 5 s).**
+- `burrow down`, then warm `up --detach --yes`: **1.87 s**; the same endpoint
+  returned `[{"id":1,"title":"Open http://api.localhost"}]`; `doctor --json`
+  reported **11 ok / 0 warnings / 0 failures**.
+- `api.localhost` did not resolve on this machine (`DNS name does not exist`).
+  The direct loopback URL was used, which is the documented fallback.
+
+Recorded in `docs/benchmarks.md` with caveats (one sample, dev machine, warm OS
+and toolchain, real network time) and linked from the README.
+
+**Error-message pass**: probed missing/invalid configs, unknown services,
+missing snapshots, a non-existent command, a health timeout, and a fixed-port
+conflict. Fixed three real issues:
+
+1. Every config error appended `note: expected burrow.toml ... help: run burrow
+   init`, even when the file existed and had a syntax error, unknown field,
+   dependency cycle, or reserved name. `project::config_error` now adds the hint
+   only for `ConfigError::Io` with `NotFound`; 3 unit tests cover missing,
+   invalid, and permission-denied files.
+2. `restore nope` now adds `help: run burrow snapshots to list existing
+   snapshots`; the existing `snapshots_restore_data_atomically_and_reset_removes_it`
+   integration test asserts both lines.
+3. `exec nope`, `env nope`, and `up nope` used to report `invalid configuration
+   at services: unknown service nope`; `project::ensure_known_services` now
+   reports `unknown service nope` plus `help: choose one of: ...`; 2 unit tests.
+
+The three runtime probes were already good and were left alone:
+
+- Bad command: exit 1, `could not start service web: could not start
+  definitely-not-a-command-xyz: The system cannot find the file specified.
+  (0x80070002)`, no state file, no process.
+- Health timeout (2 s HTTP check): exit 1, names the service, 2 attempts,
+  2.0157975 s, and both log paths; no state file, no process.
+- Fixed port held by a real listener: exit 1, `could not assign a port to web:
+  port 45679 is already in use; choose another port or use port = "auto"`; no
+  state file, no process.
+
+**Commands and real results**:
+
+- `cargo fmt --all --check` - green.
+- `cargo clippy --workspace --all-targets -- -D warnings` - green.
+- `cargo test --workspace --all-targets -- --test-threads=1` -
+  **211 passed, 0 failed across 23 suites** (5 `project::tests`: 3 config-hint,
+  2 service-selection).
+- `cargo audit` - green, 3 allowed transitive warnings (`paste`, `lru` x2).
+- `cargo build --workspace --release` - green in 127.94 s.
+- `scripts/compatibility.ps1` - 4/4 under PowerShell 7.6.7 and 4/4 under
+  Windows PowerShell 5.1.26100.9711; ASCII 64, spaces 81, non-ASCII 68, long
+  279 characters; each `doctor 9 ok / 0 warnings` and a clean `down`.
+- Temp roots removed; zero `burrow` processes remained after the probes.
+
+**Not verified**: this was not a clean VM or Windows Sandbox; the OS, Rust
+toolchain, MSVC build tools, Node, and npm were pre-installed. The numbers are
+one sample and include network time. A true clean-machine pass remains, as does
+a CI execution of the compatibility probe. The health-timeout message says
+`2 attempt(s)` and prints a 7-decimal duration; both are cosmetic.
+
+**Next**: close the remaining Phase 1 evidence gaps where possible, then move
+to the sourced landscape/comparisons and launch drafts. Do not write
+`LAUNCH_READINESS.md` until the blocked rows are resolved.

@@ -1,6 +1,29 @@
 # Agent queue (priority order; maintain aggressively)
 
-## Tier A — verification and hardening
+## Phase 1 - launch readiness
+
+- [x] **Compatibility matrix (A5)**: probe and verified/unverified rows; see
+      `docs/compatibility.md` and the A5 entry below.
+- [x] **Time to first success**: measured from a fresh checkout with empty
+      Cargo, npm, and Burrow caches. 162.62 s install + 3.19 s npm + 79.43 s
+      first start = **245.24 s**; warm restart **1.87 s**; `doctor` 11 ok.
+      Recorded in `docs/benchmarks.md`.
+- [x] **Cold-cache README pass**: no new documentation defects; `api.localhost`
+      did not resolve here and the documented direct-URL fallback worked.
+      `docs/agent/FRICTION.md` cycle 13.
+- [x] **Error-message pass**: only a missing `burrow.toml` suggests `init`;
+      unknown CLI services list valid names; a missing snapshot points to
+      `burrow snapshots`; bad command, health timeout, and port conflict were
+      probed and are actionable with clean teardown.
+- [ ] **True clean-machine pass**: a VM, Windows Sandbox, or clean CI runner
+      with no pre-installed toolchain, including a standard-user account and
+      Windows 10. Blocked: none available on this machine.
+- [ ] **Run the compatibility probe on CI**: the step is configured in
+      `.github/workflows/ci.yml`, but there is no remote/CI run here.
+- [ ] **Unverified compatibility rows**: ARM64, OneDrive/UNC, FAT/exFAT,
+      third-party antivirus, `LongPathsEnabled=0`, 8.3-disabled volumes.
+
+## Tier A - verification and hardening
 
 - [x] **A1 Claim audit**: full map in `CLAIMS.md`; 7 gaps found and queued
       (two closed since: secrets scan A2.5, junction test A2.7 partial).

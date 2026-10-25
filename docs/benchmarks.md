@@ -53,6 +53,41 @@ Both published targets were met:
 - Burrow daemon below 20 MB RSS idle: **10.6-12.6 MB**.
 - Warm `burrow up` well under 10 seconds: **1.87-1.95 s**.
 
+## Time to first success
+
+A separate README pass on 2026-10-26 followed the documented quick start from a
+fresh copy of `examples/node-postgres`, with the Cargo, npm, and Burrow caches
+empty:
+
+| Step | Wall clock |
+| --- | ---: |
+| `cargo install --path crates\burrow-cli --locked` (empty `CARGO_HOME`) | 162.62 s |
+| `npm install` (empty npm cache) | 3.19 s |
+| `burrow up --detach --yes` to both healthy and a seeded HTTP 200 (empty `BURROW_CACHE_DIR`) | 79.43 s |
+| **Total, checkout to first successful request** | **245.24 s (4 min 5 s)** |
+
+The `cargo install` step downloaded 0.27 GB of crates and compiled in a separate
+temporary target directory, so it is not comparable to the 54.47 s incremental
+release build measured in cycle 12. A developer with a populated Cargo registry
+will see a shorter build.
+
+The first start includes the 356.0 MiB PostgreSQL download, SHA-256
+verification, extraction, `initdb`, the seed, and both health checks. It is
+network-dependent; the 61.35 s cold start above was measured on a different day
+with the same archive. A warm restart after `burrow down` took **1.87 s** to
+both services healthy, and `http://127.0.0.1:<api-port>/api/todos` returned
+`[{"id":1,"title":"Open http://api.localhost"}]`. `burrow doctor --json`
+reported **11 ok / 0 warnings / 0 failures**.
+
+On this machine `api.localhost` did not resolve (`DNS name does not exist`), so
+the direct loopback URL was used. That is the documented fallback; it is a
+Windows resolver behavior, not a Burrow failure.
+
+Caveats: this was the development machine, not a clean VM. The Windows file
+cache, the Rust toolchain, the MSVC build tools, Node 22.13.1, and npm 10.9.2
+were already installed. The Cargo registry, npm cache, and Burrow package cache
+were empty. The numbers are one sample and include real network time.
+
 ## TUI
 
 Measured separately with the release binary in a console window, while the

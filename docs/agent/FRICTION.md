@@ -56,3 +56,45 @@ does not replace the Phase 1 VM/Sandbox run.
 - `BURROW_NO_BROWSER=1 burrow open` printed `http://api.localhost`.
 - `burrow down` took 0.61 s, both service PIDs were gone, and
   `.burrow\state.json` was removed.
+
+## 2026-10-26 - cycle 13 (cold-cache README pass, still not a clean machine)
+
+**Environment**: the same development machine (Windows 11 10.0.26200, normal
+user token). Unlike cycle 6, this pass used an empty `CARGO_HOME`, an empty npm
+cache, and an empty `BURROW_CACHE_DIR`, and installed Burrow with the README's
+own `cargo install` command. The OS, Rust toolchain, MSVC build tools, Node
+22.13.1, and npm 10.9.2 were pre-installed. This is a cold-cache documentation
+and first-run pass, not a clean-machine verification.
+
+**Path followed**: README Quick start from a `git archive` copy of
+`examples/node-postgres`; `cargo install --path crates\burrow-cli --locked`,
+`npm install`, `burrow up --detach --yes`, then the seeded endpoint,
+`burrow status`, `burrow doctor --json`, and `burrow down`.
+
+### Measured
+
+- `cargo install`: **162.62 s**, 0.27 GB of crates downloaded.
+- `npm install`: **3.19 s**.
+- Cold first start to both healthy and a seeded HTTP 200: **79.43 s**.
+- Checkout to first successful request: **245.24 s (4 min 5 s)**.
+- Warm restart after `down`: **1.87 s**; `doctor`: 11 ok / 0 warnings /
+  0 failures.
+
+### Friction found
+
+- No new documentation defects. The only surprise was environmental:
+  `api.localhost` did not resolve here (`DNS name does not exist`), so the
+  direct `127.0.0.1:<port>` URL was needed. The README, example README, and
+  troubleshooting guide already document that fallback and `burrow status`
+  prints the port.
+- The existing note that `burrow up --detach` does not print the proxy port
+  still applies; it did not block the pass because the routed URL is printed
+  and `status` exposes the port.
+
+### Still required for Phase 1 sign-off
+
+- A true VM, Windows Sandbox, or clean CI-runner pass with no pre-installed
+  toolchain, including a standard-user account and Windows 10.
+- Execution of the compatibility probe on CI (the step is configured, but no
+  remote/CI run was available here).
+

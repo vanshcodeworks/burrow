@@ -111,6 +111,17 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | Long project paths can start processes | `win.rs` unit tests: short paths unchanged, verbatim prefixes removed, a >260-character directory resolves to a short name that names the same directory, missing long directories produce a clear error. `scripts/compatibility.ps1`: a 279-character project path passed `up`, HTTP 200, `doctor`, and `down` under PowerShell 7.6.7 and 5.1. ADR 0010 | verified on Windows 11 x64 with 8.3 names / gap (`LongPathsEnabled=0`, 8.3 disabled, UNC, non-NTFS) |
 | Compatibility is tested, not assumed | `docs/compatibility.md` lists verified and unverified rows with the exact machine, build, PowerShell versions, elevation, and locale; the probe is package-free and leaves no work root on success | verified (Windows 11 x64 only) |
 
+## Phase 1 readiness (cycle 13)
+
+| Claim | Evidence | Status |
+| --- | --- | --- |
+| The documented quick start reaches a seeded HTTP 200 from a fresh checkout | `docs/benchmarks.md` "Time to first success": empty `CARGO_HOME`, npm cache, and `BURROW_CACHE_DIR`; `cargo install` 162.62 s, `npm install` 3.19 s, cold `up` 79.43 s, total **245.24 s**. `docs/agent/LOG.md` cycle 13 | verified (one sample, dev machine with pre-installed OS/toolchain, real network time) |
+| A warm restart is about two seconds and `doctor` is clean | Warm `up --detach --yes` **1.87 s**; seeded endpoint returned `[{"id":1,"title":"Open http://api.localhost"}]`; `doctor --json` **11 ok / 0 warnings / 0 failures** | verified (measured; one sample) |
+| Only a missing `burrow.toml` suggests `burrow init` | `project::tests::a_missing_config_suggests_burrow_init`, `an_invalid_config_does_not_suggest_burrow_init`, `a_permission_error_does_not_suggest_burrow_init`; manual probes of invalid TOML, unknown field, cycle, and reserved name | verified |
+| An unknown service named on the command line lists the valid services | `project::tests::an_unknown_selected_service_lists_valid_names`, `known_selected_services_pass`; manual `exec nope`, `env nope`, and `up nope` each print `unknown service ... help: choose one of: ...` | verified |
+| A missing snapshot names the next command | `tests/cli.rs::snapshots_restore_data_atomically_and_reset_removes_it` now asserts that `restore missing` fails with `snapshot missing does not exist` and a `burrow snapshots` next step | verified |
+| Startup failures are actionable and leave no state or processes | Manual probes: bad command (`could not start ... The system cannot find the file specified. (0x80070002)`), 2 s health timeout (names service, attempts, duration, both logs), fixed port held by a listener (`port ... already in use; choose another port or use port = "auto"`). Each exited 1, removed `.burrow/state.json`, left zero `burrow` processes. Health-timeout and port-conflict behavior also covered by CLI integration tests | observed (manual); health timeout and port conflict also automated |
+
 ## Gaps found by this audit (queued)
 
 1. ~~A2.5 secrets-scanning test~~ **closed**: `tests/secrets.rs` scans

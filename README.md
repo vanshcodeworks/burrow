@@ -114,6 +114,11 @@ its daemon was not running during the measurement, so no Docker comparison is
 reported. The benchmark script skips that comparison rather than inventing a
 number.
 
+Separately, a documented quick-start pass on 2026-10-26 went from a fresh
+checkout to the first seeded HTTP 200 in **4 min 5 s** with empty Cargo, npm,
+and Burrow caches (2 min 43 s of that was `cargo install`, 79 s the first
+start). The breakdown and caveats are in the same document.
+
 ## Fair comparison
 
 Burrow is not a drop-in Docker Compose replacement. It targets native Windows
