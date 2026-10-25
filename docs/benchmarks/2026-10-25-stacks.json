@@ -1,0 +1,132 @@
+{
+  "generated_at": "2026-10-25T22:34:13Z",
+  "project": "P:\\Burrow\\examples\\node-postgres",
+  "endpoint": "http://127.0.0.1:3000/api/todos",
+  "machine": {
+    "cpu": "AMD Ryzen 7 4800H with Radeon Graphics",
+    "cores": 8,
+    "logical_cores": 16,
+    "memory_gb": 15.4,
+    "os": "Microsoft Windows 11 Home Single Language",
+    "os_version": "10.0.26200"
+  },
+  "burrow": {
+    "version": "burrow 0.1.0",
+    "cache_dir": "P:\\Burrow\\target\\benchmark-cache",
+    "measurements": [
+      {
+        "label": "cold data (no .burrow data, package cache warm)",
+        "http_200_seconds": 10.7,
+        "daemon_working_set_mb": 11.0,
+        "total_tree_mb": 171.5,
+        "tree_processes": 11,
+        "services_mb": 160.5,
+        "service_processes": 10,
+        "api_port": 41671,
+        "response": "[{\"id\":1,\"title\":\"Open http://api.localhost\"}]"
+      },
+      {
+        "label": "warm 1 (data retained, package cache warm)",
+        "http_200_seconds": 1.87,
+        "daemon_working_set_mb": 10.9,
+        "total_tree_mb": 172.0,
+        "tree_processes": 11,
+        "services_mb": 161.1,
+        "service_processes": 10,
+        "api_port": 41671,
+        "response": "[{\"id\":1,\"title\":\"Open http://api.localhost\"}]"
+      },
+      {
+        "label": "warm 2 (data retained, package cache warm)",
+        "http_200_seconds": 1.88,
+        "daemon_working_set_mb": 10.9,
+        "total_tree_mb": 171.9,
+        "tree_processes": 11,
+        "services_mb": 161.0,
+        "service_processes": 10,
+        "api_port": 41671,
+        "response": "[{\"id\":1,\"title\":\"Open http://api.localhost\"}]"
+      },
+      {
+        "label": "warm 3 (data retained, package cache warm)",
+        "http_200_seconds": 1.84,
+        "daemon_working_set_mb": 10.9,
+        "total_tree_mb": 172.2,
+        "tree_processes": 11,
+        "services_mb": 161.3,
+        "service_processes": 10,
+        "api_port": 41671,
+        "response": "[{\"id\":1,\"title\":\"Open http://api.localhost\"}]"
+      }
+    ]
+  },
+  "docker": {
+    "skipped": false,
+    "client_version": "24.0.7",
+    "server_version": "24.0.7",
+    "compose_version": "2.23.3-desktop.2",
+    "os_type": "linux",
+    "architecture": "x86_64",
+    "cpus": 16,
+    "memory_bytes": 8019410944,
+    "kernel_version": "6.18.54.1-microsoft-standard-WSL2",
+    "image_setup": {
+      "pull_db_seconds": 21.57,
+      "build_api_seconds": 2.67
+    },
+    "postgres_digest": "postgres@sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36",
+    "postgres_image_id": "sha256:6a2e324ebe59af6031c4c1cd96c1d5072c2ebc36563d2196365e43b8297c062d",
+    "postgres_image_size": "294301549",
+    "api_image_id": "sha256:ed351f66e8dcc383089a5761829546b5c9f9ee9835545744b92bf5a48c27f859",
+    "api_image_size": "159806724",
+    "measurements": [
+      {
+        "label": "cold (empty volume, images cached)",
+        "compose_up_return_seconds": 3.87,
+        "http_200_seconds": 4.11,
+        "container_stats": [
+          "burrow-bench-40648-api-1|28.04MiB / 7.469GiB|32.78%",
+          "burrow-bench-40648-db-1|34.05MiB / 7.469GiB|4.87%"
+        ],
+        "response": "[{\"id\":1,\"title\":\"Open http://api.localhost\"}]"
+      },
+      {
+        "label": "warm 1 (persistent volume, images cached)",
+        "compose_up_return_seconds": 2.99,
+        "http_200_seconds": 3.2,
+        "container_stats": [
+          "burrow-bench-40648-api-1|28.04MiB / 7.469GiB|30.17%",
+          "burrow-bench-40648-db-1|21.71MiB / 7.469GiB|4.62%"
+        ],
+        "response": "[{\"id\":1,\"title\":\"Open http://api.localhost\"}]"
+      },
+      {
+        "label": "warm 2 (persistent volume, images cached)",
+        "compose_up_return_seconds": 1.76,
+        "http_200_seconds": 1.92,
+        "container_stats": [
+          "burrow-bench-40648-api-1|16.89MiB / 7.469GiB|29.00%",
+          "burrow-bench-40648-db-1|21.3MiB / 7.469GiB|4.89%"
+        ],
+        "response": "[{\"id\":1,\"title\":\"Open http://api.localhost\"}]"
+      },
+      {
+        "label": "warm 3 (persistent volume, images cached)",
+        "compose_up_return_seconds": 1.87,
+        "http_200_seconds": 2.08,
+        "container_stats": [
+          "burrow-bench-40648-api-1|15.93MiB / 7.469GiB|21.10%",
+          "burrow-bench-40648-db-1|21.29MiB / 7.469GiB|2.53%"
+        ],
+        "response": "[{\"id\":1,\"title\":\"Open http://api.localhost\"}]"
+      }
+    ]
+  },
+  "notes": [
+    "Startup is wall-clock time from launching the stack until the API returns HTTP 200 with the seeded row.",
+    "Burrow cold data starts with no .burrow data but a warm package cache; the Compose cold run starts with an empty volume but cached images.",
+    "Image pull/build and Burrow package download are setup, not startup, and are reported separately or excluded.",
+    "Compose container_stats are container memory only; they exclude the Docker Desktop VM and daemon overhead.",
+    "This is a single-machine sample, not a statistical distribution."
+  ]
+}
