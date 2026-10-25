@@ -10,11 +10,11 @@
 //! arrive from another machine are restricted to routes whose service set
 //! `expose = true`; loopback clients can reach every route.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::convert::Infallible;
 use std::error::Error as StdError;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -26,11 +26,15 @@ use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tracing::{debug, warn};
 
 type BoxError = Box<dyn StdError + Send + Sync>;
 type ProxyBody = BoxBody<Bytes, BoxError>;
+
+/// How long a proxy request waits for the daemon to wake an idle service.
+const WAKE_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// One hostname route.
 #[derive(Clone, Copy, Debug)]
@@ -39,6 +43,88 @@ pub struct Route {
     pub port: u16,
     /// Whether clients from other machines may use this route.
     pub expose: bool,
+}
+
+/// A request from the proxy for the daemon to wake an idle service.
+pub struct WakeCall {
+    /// Loopback port of the idle service.
+    pub port: u16,
+    /// Signalled once the service is healthy (`Ok`) or failed to wake (`Err`).
+    pub reply: oneshot::Sender<std::result::Result<(), String>>,
+}
+
+/// Cooperative wake-up channel between the daemon and the proxy.
+///
+/// The daemon marks a service's port idle when it idle-stops the service and
+/// clears the mark once the service is running again. Before connecting to an
+/// upstream, the proxy asks for a wake-up when (and only when) the port is
+/// marked idle, so requests for a running service pay no coordination cost.
+#[derive(Clone)]
+pub struct ProxyWake {
+    idle: Arc<Mutex<BTreeSet<u16>>>,
+    sender: mpsc::UnboundedSender<WakeCall>,
+}
+
+impl ProxyWake {
+    /// Creates the channel and the daemon-side receiver.
+    pub fn new() -> (Self, mpsc::UnboundedReceiver<WakeCall>) {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        (
+            Self {
+                idle: Arc::new(Mutex::new(BTreeSet::new())),
+                sender,
+            },
+            receiver,
+        )
+    }
+
+    /// Marks `port` as idle; the next proxied request will ask for a wake-up.
+    pub fn mark_idle(&self, port: u16) {
+        self.idle
+            .lock()
+            .expect("idle set not poisoned")
+            .insert(port);
+    }
+
+    /// Clears the idle mark for `port`.
+    pub fn mark_running(&self, port: u16) {
+        self.idle
+            .lock()
+            .expect("idle set not poisoned")
+            .remove(&port);
+    }
+
+    /// Returns `Ok(())` once the service on `port` is running.
+    ///
+    /// Returns immediately when the port is not marked idle.
+    pub async fn request(&self, port: u16) -> std::result::Result<(), String> {
+        if !self
+            .idle
+            .lock()
+            .expect("idle set not poisoned")
+            .contains(&port)
+        {
+            return Ok(());
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(WakeCall {
+                port,
+                reply: reply_tx,
+            })
+            .map_err(|_| "the Burrow daemon is no longer running".to_owned())?;
+        match tokio::time::timeout(WAKE_REQUEST_TIMEOUT, reply_rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err("the Burrow daemon dropped the wake-up request".to_owned()),
+            Err(_) => Err("the service did not wake up in time".to_owned()),
+        }
+    }
+}
+
+impl std::fmt::Debug for ProxyWake {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("ProxyWake").finish_non_exhaustive()
+    }
 }
 
 /// A running proxy. Dropping the handle stops accepting new connections.
@@ -79,11 +165,14 @@ impl std::fmt::Debug for ProxyHandle {
 /// Starts the proxy with `routes` (hostname to loopback route).
 ///
 /// `port` must already be reserved by the caller. Pass `0` to let the
-/// operating system choose one, which is useful in tests.
+/// operating system choose one, which is useful in tests. `wake` enables
+/// idle wake-up for routed services; pass `None` when no daemon backs the
+/// proxy.
 pub async fn start(
     routes: BTreeMap<String, Route>,
     bind_all: bool,
     port: u16,
+    wake: Option<ProxyWake>,
 ) -> std::io::Result<ProxyHandle> {
     let address = if bind_all {
         IpAddr::V4(Ipv4Addr::UNSPECIFIED)
@@ -106,7 +195,7 @@ pub async fn start(
         ));
     }
 
-    let task = tokio::spawn(accept_loop(listener, routes));
+    let task = tokio::spawn(accept_loop(listener, routes, wake));
     Ok(ProxyHandle {
         port,
         exposed: bind_all,
@@ -123,7 +212,11 @@ pub fn url_for(host: &str, port: u16) -> String {
     }
 }
 
-async fn accept_loop(listener: TcpListener, routes: Arc<BTreeMap<String, Route>>) {
+async fn accept_loop(
+    listener: TcpListener,
+    routes: Arc<BTreeMap<String, Route>>,
+    wake: Option<ProxyWake>,
+) {
     loop {
         let (stream, peer) = match listener.accept().await {
             Ok(pair) => pair,
@@ -135,10 +228,12 @@ async fn accept_loop(listener: TcpListener, routes: Arc<BTreeMap<String, Route>>
         };
         stream.set_nodelay(true).ok();
         let routes = Arc::clone(&routes);
+        let wake = wake.clone();
         tokio::spawn(async move {
             let service = service_fn(move |request| {
                 let routes = Arc::clone(&routes);
-                async move { Ok::<_, Infallible>(handle(request, routes, peer).await) }
+                let wake = wake.clone();
+                async move { Ok::<_, Infallible>(handle(request, routes, wake, peer).await) }
             });
             let connection = hyper::server::conn::http1::Builder::new()
                 .preserve_header_case(true)
@@ -154,6 +249,7 @@ async fn accept_loop(listener: TcpListener, routes: Arc<BTreeMap<String, Route>>
 async fn handle(
     mut request: Request<Incoming>,
     routes: Arc<BTreeMap<String, Route>>,
+    wake: Option<ProxyWake>,
     peer: SocketAddr,
 ) -> Response<ProxyBody> {
     let Some(host) = request_host(request.headers()) else {
@@ -186,6 +282,21 @@ async fn handle(
         );
     }
     let upstream_port = route.port;
+
+    // An idle-stopped service is woken through the daemon before the proxy
+    // connects, so the request waits for a healthy upstream instead of
+    // failing on a closed port.
+    if let Some(wake) = &wake {
+        if let Err(message) = wake.request(upstream_port).await {
+            return text_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                &format!(
+                    "Burrow proxy: could not wake `{host}` on 127.0.0.1:{upstream_port}: {message}\n\
+                     help: run `burrow status` and check the service logs\n"
+                ),
+            );
+        }
+    }
 
     let upgrade_requested = is_upgrade_request(request.headers());
     let path = request
@@ -468,6 +579,7 @@ mod tests {
             )]),
             false,
             0,
+            None,
         )
         .await
         .expect("start proxy");
@@ -520,6 +632,7 @@ mod tests {
             )]),
             false,
             0,
+            None,
         )
         .await
         .expect("start proxy");
@@ -547,6 +660,70 @@ mod tests {
             .expect("tunnel timeout")
             .expect("read tunnel");
         assert_eq!(&echoed, b"PING");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_idle_route_is_woken_before_the_proxy_connects() {
+        // Reserve a port, then free it again so the route points at a port
+        // nothing is listening on until the wake handler starts the upstream.
+        let port = {
+            let listener = TcpListener::bind(("127.0.0.1", 0))
+                .await
+                .expect("reserve port");
+            listener.local_addr().expect("address").port()
+        };
+        let (wake, mut wake_rx) = super::ProxyWake::new();
+        wake.mark_idle(port);
+        let proxy = start(
+            BTreeMap::from([(
+                "shop.localhost".to_owned(),
+                super::Route {
+                    port,
+                    expose: false,
+                },
+            )]),
+            false,
+            0,
+            Some(wake),
+        )
+        .await
+        .expect("start proxy");
+
+        // The daemon side of the channel: start the upstream on the routed
+        // port, then reply so the proxy connects.
+        let daemon = tokio::spawn(async move {
+            let call = wake_rx.recv().await.expect("wake call");
+            assert_eq!(call.port, port);
+            let listener = TcpListener::bind(("127.0.0.1", port))
+                .await
+                .expect("bind upstream on the routed port");
+            tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.expect("accept upstream");
+                let request = read_headers(&mut stream).await;
+                assert!(request.contains("host:"), "request:\n{request}");
+                stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello",
+                    )
+                    .await
+                    .expect("write response");
+            });
+            let _ = call.reply.send(Ok(()));
+        });
+
+        let mut stream = TcpStream::connect(("127.0.0.1", proxy.port()))
+            .await
+            .expect("connect proxy");
+        stream
+            .write_all(b"GET / HTTP/1.1\r\nHost: shop.localhost\r\nConnection: close\r\n\r\n")
+            .await
+            .expect("write request");
+        let response = read_response(&mut stream).await;
+        assert!(
+            response.starts_with("HTTP/1.1 200"),
+            "response:\n{response}"
+        );
+        daemon.await.expect("daemon task");
     }
 
     #[test]
