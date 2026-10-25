@@ -64,8 +64,17 @@
       identity, substitution with surrounding text, unclosed/unknown-variable
       errors, and that resolution preserves template-free values. Eight
       properties, **1,840 generated cases**, all green.
-- [ ] **A5 Compatibility matrix doc**: Win10/11, non-ASCII paths, long paths,
-      spaces, OneDrive dirs, non-admin. Manual test script + docs page.
+- [x] **A5 Compatibility matrix doc**: `scripts/compatibility.ps1` runs a
+      package-free project through `up`/`status`/`doctor`/`down` in ASCII,
+      spaces, non-ASCII, and >260-character directories. Verified on Windows 11
+      x64 build 26200 under PowerShell 7.6.7 and 5.1 (4/4 each). The probe found
+      a real long-path failure (`CreateProcessW` os error 267); fixed by
+      converting the process working directory and application path to an 8.3
+      short name (ADR 0010). Windows 10, ARM64, true standard-user,
+      OneDrive/UNC, FAT/exFAT, `LongPathsEnabled=0`, and 8.3-disabled volumes
+      remain unverified and are listed as such in `docs/compatibility.md`. The
+      CI `check` job now runs the same probe on `windows-latest` after the
+      release build; that step was added but not executed here.
 - [x] **A6 Crash safety**: `burrow doctor --report` writes a local redacted
       bundle (report, environment, redacted config/state, daemon-log tail, up
       to 10 crash notes for the project); the CLI panic hook writes structured

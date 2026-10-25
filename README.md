@@ -39,6 +39,11 @@ Requirements:
 - To build from source: Rust 1.85 or newer and the MSVC build tools with the
   Windows SDK.
 
+Only Windows 11 x86-64 has been exercised so far. The
+[compatibility matrix](docs/compatibility.md) lists the verified path shapes
+(including spaces, non-ASCII names, and paths over 260 characters) and the
+configurations that still need a test.
+
 From a checkout, this one command builds the release binary and installs it:
 
 ```powershell
@@ -229,6 +234,7 @@ network access you have. The full trust model is in
 ## Documentation
 
 - [Getting started](docs/getting-started.md)
+- [Compatibility](docs/compatibility.md)
 - [CLI reference](docs/cli.md)
 - [Configuration reference](docs/config-reference.md) and [JSON Schema](docs/burrow.schema.json)
 - [Registry guide](docs/registry.md)

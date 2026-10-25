@@ -16,6 +16,18 @@ distribution in the loop.
   `PATH`. Burrow starts your command; it does not install language runtimes.
 - To build from source: Rust 1.85 or newer and the MSVC toolchain.
 
+## Compatibility
+
+Only Windows 11 x86-64 has been exercised so far. Project paths with spaces,
+non-ASCII characters, and more than 260 characters are covered by
+`scripts/compatibility.ps1`; Windows 10, ARM64, true standard-user accounts,
+OneDrive folders, and network shares are still unverified. See the
+[compatibility matrix](compatibility.md) for the exact rows and the probe.
+
+If `burrow up` reports that a long working directory has no 8.3 short name,
+move the project to a path under 260 characters. See
+[ADR 0010](decisions/0010-long-path-process-working-directories.md).
+
 ## Install
 
 This repository does not yet publish crates.io or GitHub release artifacts.

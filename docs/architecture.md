@@ -48,6 +48,16 @@ supervisor passes a resolved executable path. Relative program paths that
 contain a directory are resolved against the configured working directory, or
 against Burrow's current directory when no working directory is set.
 
+A working directory of 260 UTF-16 units or more cannot be passed to
+`CreateProcessW` directly, and the `\\?\` prefix is rejected in that argument
+(and makes `cmd.exe` fall back to `C:\Windows`). Before creation, Burrow
+converts such a directory to its 8.3 short name, removes the prefix, and uses
+the short form for the process working directory and application path. The
+project path in configuration, state, and output is unchanged. The same helper
+is applied to `cmd` health checks, the detached daemon, `burrow exec`, the
+browser launcher used by `burrow open`, and package steps. See
+[ADR 0010](decisions/0010-long-path-process-working-directories.md).
+
 ### Limits
 
 - `JobMemoryLimit` caps committed memory for the job as a whole.

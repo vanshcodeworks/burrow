@@ -100,9 +100,10 @@ clear test strategy, and does not weaken the trust model. Read
 - **`burrow env --format cmd`.** Add a `cmd.exe` output format (`set KEY=value`)
   next to the existing dotenv, JSON, and PowerShell formats, with the same
   escaping tests the PowerShell format has.
-- **`burrow doctor` long-path check.** Detect whether Windows long paths are
-  enabled and warn when a project directory exceeds the classic `MAX_PATH`
-  limit, with a remedy pointing at the Microsoft documentation.
+- **`burrow doctor` long-path check.** Warn when the project directory is at or
+  beyond `MAX_PATH` and its 8.3 short name cannot be resolved, since that is the
+  case where process creation fails. Do not warn merely because the path is
+  long; that case now works. Use the same remedy `up` reports.
 - **Snapshot manifest tests.** Extend `burrow-data` tests for the manifest
   version field and for restoring a snapshot that contains a service which was
   later removed from `burrow.toml` (the untouched-service case).

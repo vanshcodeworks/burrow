@@ -39,6 +39,10 @@ jobs:
       - name: Build release
         run: cargo build --workspace --release
 
+      - name: Compatibility probe
+        shell: pwsh
+        run: .\scripts\compatibility.ps1 -Burrow .\target\release\burrow.exe
+
       - name: Upload burrow.exe
         uses: actions/upload-artifact@v4
         with:

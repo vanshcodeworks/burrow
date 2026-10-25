@@ -374,6 +374,17 @@ and CI jobs are not supported. If the dashboard is left in a strange state after
 a crash, open a new terminal; the normal exit path restores the console mode and
 leaves the alternate screen.
 
+## "working directory ... is too long for a child process"
+
+Burrow handles project paths beyond 260 characters by using the volume's 8.3
+short name for the process working directory. This error means the short name
+could not be resolved, or is still too long, usually because 8.3 name
+generation is disabled on that volume. Move the project to a path under 260
+characters. An administrator can enable 8.3 names on the volume, but moving the
+project is simpler and does not change machine policy. See
+[`compatibility.md`](compatibility.md#long-paths) and
+[ADR 0010](decisions/0010-long-path-process-working-directories.md).
+
 ## Build and toolchain problems
 
 - **`link.exe` not found / MSVC errors.** Install Visual Studio Build Tools and

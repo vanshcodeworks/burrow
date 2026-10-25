@@ -451,3 +451,78 @@ matches no pattern.
 
 **Next**: Phase 1 - compatibility matrix (A5), clean-machine/README pass,
 time-to-first-success measurement, and error-message pass.
+
+## 2026-10-26 - cycle 12: compatibility matrix and long-path fix (A5)
+
+**Task**: Start Phase 1 with a real compatibility matrix, and fix whatever the
+probe finds.
+
+**Probe**: `scripts/compatibility.ps1` creates a package-free project under
+`%TEMP%` with a PowerShell TCP listener on `127.0.0.1:$env:PORT` that returns a
+minimal HTTP 200. For each directory shape it runs `up --detach --yes`, polls
+`status --json` until healthy, makes a direct HTTP request, runs `doctor
+--json`, runs `down`, and checks that `.burrow/state.json` is gone. It downloads
+nothing, needs no administrator rights, binds only loopback ephemeral ports, and
+removes its work root on success.
+
+**Real bug found**: a 279-character project path failed at daemon spawn with
+`could not start the Burrow daemon (The directory name is invalid. (os error
+267))`. `CreateProcessW` rejects `lpCurrentDirectory` at or beyond `MAX_PATH`,
+rejects the `\\?\` prefix in that argument, and `cmd.exe` treats a verbatim
+directory as a UNC path and falls back to `C:\Windows`.
+
+**Fix**: `burrow_supervisor::process_working_directory` removes verbatim
+prefixes from short paths and converts long paths to their existing 8.3 short
+name, resolving it with `GetShortPathNameW` through a verbatim input. A long
+`lpApplicationName` is shortened the same way. The helper is applied to
+supervised service creation, `cmd` health checks, the detached daemon, `burrow
+exec`, the browser launcher used by `burrow open`, and package init/seed steps.
+If the short form is unavailable or still too long, the error names the
+directory and tells the user to move the project to a path under 260 characters.
+ADR 0010.
+
+**Evidence**:
+
+- PowerShell 7.6.7: 4/4 passed. ASCII 64 chars, spaces 81 chars, non-ASCII 68
+  chars, long 279 chars. Each: `healthy`, HTTP 200, `doctor 9 ok / 0
+  warnings`, `down` removed `.burrow/state.json`.
+- Windows PowerShell 5.1.26100.9711: the same 4/4 passed with the same path
+  lengths.
+- The machine is Windows 11 Home Single Language 10.0.26200 build 26200,
+  x86-64, AMD Ryzen 7 4800H, 15.4 GB RAM, non-elevated, `LongPathsEnabled=1`,
+  locale `en-NZ`.
+
+**PowerShell 5.1 quirk**: Windows PowerShell reads a BOM-less script as ANSI.
+The literal `café 测试 Δ` test path was mangled into smart quotes and the script
+failed to parse. The probe now builds that path from code points and is pure
+ASCII, so both editions parse the same file.
+
+**Docs**: added `docs/compatibility.md` with verified and unverified rows and
+the probe's limits; linked it from the README and getting-started; added a
+long-path remedy to troubleshooting and a spawn note to architecture; updated
+the roadmap's doctor suggestion; ADR 0010 records the decision.
+
+**CI**: added a `Compatibility probe` step to `.github/workflows/ci.yml` after
+the release build. It runs on `windows-latest`; no CI run was available here,
+so this is configuration only.
+
+**Commands and real results**:
+
+- `cargo fmt --all --check` - green.
+- `cargo clippy --workspace --all-targets -- -D warnings` - green.
+- `cargo test --workspace --all-targets -- --test-threads=1` -
+  **206 passed, 0 failed across 23 suites** (4 new supervisor unit tests:
+  short path unchanged, verbatim prefixes removed, long path resolves to a
+  short name that names the same directory, missing long directory errors
+  clearly).
+- `cargo audit` - green, 3 allowed transitive warnings (`paste`, `lru` x2).
+- `cargo build --workspace --release` - green in 54.47 s.
+
+**Not verified**: Windows 10, ARM64, a true standard-user account (the test
+account is an administrator running filtered), OneDrive and UNC project
+directories, FAT/exFAT, third-party antivirus, `LongPathsEnabled=0`, and a
+volume with 8.3 names disabled. The probe does not cover packages, the proxy,
+snapshots, the dashboard, or containers. A clean-machine pass is still needed.
+
+**Next**: clean-machine/README pass, time-to-first-success measurement, and an
+error-message pass.
