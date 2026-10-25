@@ -59,20 +59,56 @@ M1 is a foundation only. Burrow is not usable end-to-end until M2 ships.
 
 ## M6 - Data and polish
 
-- [ ] Snapshot, restore, list, and reset using atomic directory operations
-- [ ] Benchmarks with real measurements and recorded machine specs
-- [ ] Two runnable examples: Node/React + Postgres, and Python + Postgres + Redis
-- [ ] Full user documentation: getting started, config reference, registry
-      authoring, security and trust model, troubleshooting, FAQ
-- [ ] Release pipeline, `cargo install` support, and winget/Scoop manifest drafts
-- [ ] Final README with only measured claims
+- [x] Snapshot, restore, list, and reset using atomic directory operations
+- [x] Benchmarks with real measurements and recorded machine specs
+- [x] Two runnable examples: Node.js API + PostgreSQL, and Python FastAPI +
+      PostgreSQL (no Redis entry exists; the registry documents why)
+- [x] Full user documentation: getting started, config reference, registry
+      authoring, security and trust model, troubleshooting, FAQ, CLI reference,
+      demo script
+- [x] Release pipeline, `cargo install` support, and winget/Scoop manifest drafts
+- [x] Final README with only measured claims
 
-## Phase 2
+## Phase 2 (complete)
 
-Only after M6:
+- [x] Idle stop with lazy wake-up on the next connection. `idle_stop` counts
+      established connections to the service port, stops the service after the
+      configured quiet period, holds the port with a wake listener, and wakes
+      the service on the next connection; routed services wake through the
+      proxy, which waits for a healthy upstream
+      ([ADR 0003](decisions/0003-idle-stop-and-lazy-wake.md))
+- [x] File watching and restart on change. `watch` roots are monitored with
+      `ReadDirectoryChangesW`, changes are debounced per service, and only the
+      watched service restarts ([ADR 0004](decisions/0004-file-watching.md))
+- [x] More registry services: `nats@2.15.1` and `caddy@2.11.7`, both pinned to
+      official upstream Windows artifacts with locally verified SHA-256 hashes
+- [x] Optional container fallback: `use = "container:IMAGE"` delegates to
+      Docker or Podman, loopback-only, labelled in `burrow status`, with
+      leftover-container cleanup and an honest list of limitations
+      ([ADR 0005](decisions/0005-container-fallback.md))
 
-- [ ] Idle stop with lazy wake-up on the next connection
-- [ ] File watching and restart on change
-- [ ] More registry services
-- [ ] Optional container fallback for services without a trustworthy native
-      Windows build
+## Good first issue candidates
+
+These are scoped suggestions, not commitments. Each one is self-contained, has a
+clear test strategy, and does not weaken the trust model. Read
+[CONTRIBUTING.md](../CONTRIBUTING.md) first.
+
+- **Shell completions.** Add `burrow completions <shell>` so PowerShell users
+  get tab completion. Evaluate a completion crate (such as `clap_complete`) and
+  record the verified version before depending on it. Cover the command surface
+  with a unit test on the generated output.
+- **`burrow env --format cmd`.** Add a `cmd.exe` output format (`set KEY=value`)
+  next to the existing dotenv, JSON, and PowerShell formats, with the same
+  escaping tests the PowerShell format has.
+- **`burrow doctor` long-path check.** Detect whether Windows long paths are
+  enabled and warn when a project directory exceeds the classic `MAX_PATH`
+  limit, with a remedy pointing at the Microsoft documentation.
+- **Snapshot manifest tests.** Extend `burrow-data` tests for the manifest
+  version field and for restoring a snapshot that contains a service which was
+  later removed from `burrow.toml` (the untouched-service case).
+- **`docs/registry.md` walkthrough.** Add a step-by-step annotated example of a
+  registry entry using the PostgreSQL file as the reference, aimed at
+  contributors adding a second verified package.
+- **Example seed variations.** Add a second seed script to one example that
+  demonstrates `burrow restore` returning a changed table to its snapshot state,
+  with the expected query output in the example README.

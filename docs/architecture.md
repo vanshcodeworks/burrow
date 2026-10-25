@@ -86,8 +86,10 @@ variables before anything starts.
 
 The first `burrow up` prints every executable entry and requires confirmation.
 The approval is stored in `.burrow/trust.json` and keyed by
-`Config::executable_hash`, which covers `run` and `use` entries but not ports or
-memory limits. `--yes` performs the same approval non-interactively for CI.
+`Config::executable_hash`, which covers the project name, service names, and
+each service's `run`, `use`, and `cwd` values. It does not cover `env`, health
+checks, ports, routes, memory limits, or the contents of scripts. `--yes`
+performs the same approval non-interactively for CI.
 
 ## Package cache (M3)
 
@@ -103,10 +105,38 @@ or reserved names, and oversized entries. Initialization and seeding markers
 live inside each service's data directory, so seed scripts run exactly once per
 data directory even across restarts.
 
+## Snapshots, restore, and reset (M6)
+
+`burrow-data` implements snapshots as full directory copies, not database dumps.
+`burrow snapshot <name>` copies every configured service's data directory into
+`.burrow/snapshots/<name>/` and writes `manifest.json` with each service's
+presence, file count, and byte count. The copy is built in a temporary directory
+on the same volume and renamed into place only after every file and the manifest
+have been written, so an interrupted snapshot never appears in
+`burrow snapshots`. Snapshot names are restricted to 1-64 lowercase letters,
+digits, `-`, `_`, and `.`, and must start with a letter or digit. Reparse points
+inside a data directory are rejected instead of followed.
+
+`burrow restore <name>` stages every service's snapshot data first, then swaps
+one service directory at a time with `rename`. If a later swap fails, directories
+already replaced are rolled back, so each service is left with either its old
+directory or the restored one, never a partial copy. Services that did not exist
+when the snapshot was taken are left untouched; a service recorded as absent has
+its current data removed.
+
+`burrow reset <service>` removes that service's data directory and its
+initialization and seed markers. The next start initializes a fresh directory and
+runs the seed script again. All three data commands require the project daemon to
+be stopped: copying a live database directory can capture a torn state. Stale
+state from a crashed daemon is authenticated before being treated as running.
+Snapshots are not aware of database formats and do not protect against another
+program writing to `.burrow/data/` at the same time.
+
+
 ## Networking and reverse proxy (M4)
 
 `burrow-net` remembers one port per project in `.burrow/ports.json`. Automatic
-ports are chosen from 40000-50000 and probed on `127.0.0.1` before reuse, so
+ports are chosen from 40000-49999 and probed on `127.0.0.1` before reuse, so
 URLs stay stable but never collide with another running service. Fixed ports are
 validated as free. When the CLI needs values for a live daemon, it pins the
 ports recorded in `.burrow/state.json` instead of re-probing them.
@@ -185,6 +215,50 @@ Windows command lookup follows `PATHEXT` order before considering an
 extensionless file. This matches `cmd.exe` and avoids selecting an npm Unix shell
 shim instead of `npm.cmd`. `.cmd` and `.bat` targets run through `cmd.exe`.
 
+## Idle stop and lazy wake-up (Phase 2)
+
+A service with `idle_stop` is stopped after it has had no established TCP
+connections for the configured duration, and started again on the next
+connection. The design and its trade-offs are recorded in
+[ADR 0003](decisions/0003-idle-stop-and-lazy-wake.md); the mechanics in brief:
+
+- The daemon samples `GetExtendedTcpTable` (wrapped in `burrow-supervisor`'s
+  `win` module) every two seconds, counting system-wide connections whose
+  local port is the service's port. Sampling starts only after the project is
+  fully up and the service is healthy.
+- Stopping is the same graceful path `burrow down` uses (package stop command,
+  CTRL_BREAK, terminate). The daemon then binds the port with a wake listener
+  so no other process can take it while the service sleeps.
+- A direct client that connects wakes the service: the listener accepts one
+  client, drops the listen socket, and the daemon parks the client until the
+  service is healthy, then splices it with `copy_bidirectional`. The client
+  speaks to the real service; Burrow never interprets the protocol.
+- Routed services wake through the proxy: an `ProxyWake` channel shared with
+  the daemon lets the proxy hold a request until the upstream is healthy, so
+  HTTP clients see a real response or an explicit error instead of a refused
+  connection.
+- `burrow status` shows idle services as `idle` with no PID; a wake resets
+  crash backoff and is counted as a restart.
+
+## File watching (Phase 2)
+
+`watch` roots are monitored with one `ReadDirectoryChangesW` thread per root
+(overlapped I/O plus a stop event, in the supervisor's `win` module). The
+daemon polls events on its existing tick, maps them to services through the
+configured roots, filters anything under a `.burrow` or `.git` component, and
+restarts only the watched service after a debounce window (quiet for 500 ms,
+at most 2 s). Rationale: [ADR 0004](decisions/0004-file-watching.md).
+
+## Container fallback (Phase 2)
+
+`use = "container:IMAGE"` delegates a service to Docker or Podman (found via
+`BURROW_CONTAINER_ENGINE`, `docker`, `podman`). The supervised process is the
+engine client; the port mapping is loopback-only; stops go through
+`<engine> stop` and every start clears a leftover container first. Container
+services are labelled in `burrow status` (RUNTIME column and JSON), cannot be
+seeded or snapshotted, and run with an ephemeral filesystem. Design and known
+limitations: [ADR 0005](decisions/0005-container-fallback.md).
+
 ## Safety rules
 
 - Product `unsafe` is confined to each crate's private `win` module
@@ -199,8 +273,11 @@ shim instead of `npm.cmd`. `.cmd` and `.bat` targets run through `cmd.exe`.
   inspect process liveness and job membership from the outside; those calls
   carry SAFETY comments too. This is a review-enforced rule, backed by clippy
   with `-D warnings` in CI.
-- Generated secrets are written to `.burrow/secrets` with restrictive handling
-  and are excluded from logs, status tables, and command summaries.
+- Generated secrets are written to `.burrow/secrets` as plaintext JSON readable
+  by the Windows account. There is no custom ACL or encryption. Secrets are
+  excluded from logs, status tables, and command summaries; only
+  `burrow env <service>` prints them, because that command exists to export a
+  service environment.
 - Network listeners bind loopback by default. Remote proxy access requires an
   explicit per-service `expose = true` and is limited to those routes.
 
@@ -216,6 +293,10 @@ shim instead of `npm.cmd`. `.cmd` and `.bat` targets run through `cmd.exe`.
   kill-on-close, graceful shutdown ordering, and the forced-termination fallback.
 - Tests that exercise console control events run with `--test-threads=1` because
   console events are process-wide. CI enforces this.
+- Phase-2 integration tests live in `crates/burrow-cli/tests/phase2.rs`: an
+  idle-stop/wake round trip against a real listener, watch restarts (including
+  the `.burrow` exclusion), the container preflight failure, and a live
+  container round trip that skips when no engine responds.
 - CI on `windows-latest` runs rustfmt, clippy (`-D warnings`), the workspace test
   suite, and a release build, then uploads `burrow.exe`. A separate job runs
   `cargo audit`.

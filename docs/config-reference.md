@@ -64,8 +64,9 @@ prefixes, and command arguments.
 | `seed` | path | none | SQL or other seed script for a managed package; relative to the project. |
 | `route` | string | none | Reverse-proxy hostname such as `shop.localhost`. |
 | `expose` | boolean | `false` | Allow non-loopback clients to reach this service through its route. |
-| `idle_stop` | duration | none | Accepted and validated, but inert in this release (phase 2). |
-| `watch` | array of strings | `[]` | Accepted, but inert in this release (phase 2). |
+| `idle_stop` | duration | none | Stop the service after this much time without connections; it wakes on the next one. See below. |
+| `watch` | array of strings | `[]` | Project-relative directories; the service restarts when files change. See below. |
+| `container_port` | integer | the service's own port | Port the image listens on inside the container; only valid with `use = "container:..."`. |
 
 ### `run` and `use`
 
@@ -211,9 +212,66 @@ that make sense for your use case.
 
 ### `idle_stop` and `watch`
 
-Both keys are parsed and validated so existing files stay forward compatible.
-`idle_stop` must be a non-zero duration. Neither has behaviour in this release;
-see the [roadmap](roadmap.md) for phase 2.
+`idle_stop` stops a service after it has had **no established TCP connections**
+for the whole duration. The daemon samples the system connection table every
+couple of seconds, starting only once the project is fully up and the service
+is healthy. Held connections (including WebSocket/HMR tunnels through the
+proxy) keep the service awake. When the service stops:
+
+- its status becomes `idle` in `burrow status` (no PID, no resource use);
+- the port is held by a wake listener, so the next client that connects
+  triggers a restart and is then tunnelled to the healthy service (the client
+  sees the service's own greeting/protocol, never a proxy);
+- routed services wake through the reverse proxy, which holds the request
+  until the upstream is healthy again and answers with an explicit error if
+  the wake fails.
+
+`idle_stop` must be a non-zero duration. A wake is a deliberate restart: it
+resets crash backoff and counts in the `restarts` column, but cannot trip the
+crash-loop breaker on its own.
+
+`watch` lists project-relative directories (no `..`, no absolute paths) that
+must exist when `burrow up` runs. Changes under them restart **only that
+service** after a short debounce; dependents keep running. Paths containing a
+`.burrow` or `.git` component never trigger a restart. Watching is best-effort:
+if the kernel event buffer overflows, one restart is scheduled instead of
+silent loss.
+
+```toml
+[services.api]
+run = "npm run dev"
+watch = ["api/src"]
+idle_stop = "30m"
+```
+
+### Container services (`use = "container:IMAGE"`)
+
+When a service has no trustworthy native Windows build, `use` can delegate it
+to a container engine installed separately (Docker or Podman; override with
+`BURROW_CONTAINER_ENGINE`). Burrow is not a container runtime and bundles
+none:
+
+```toml
+[services.cache]
+use = "container:redis:7-alpine"
+container_port = 6379      # port the image listens on inside the container
+health = { tcp = true }
+```
+
+- The engine client runs as the supervised process:
+  `docker run --rm --name burrow-<project>-<service> -p 127.0.0.1:<port>:<container_port> ... IMAGE`.
+  The port mapping is loopback-only.
+- `burrow up` and `burrow doctor` verify the engine is installed **and
+  responding** before starting anything.
+- The service environment passed into the container contains your `env`
+  entries plus `PORT`, `HOST`, `BURROW_SERVICE`, `BURROW_PROJECT`, and
+  `BURROW_SERVICE_PASSWORD`. Host paths (`PATH`, project and data directories)
+  are not passed. `memory` maps to `--memory`; CPU caps are not translated.
+- `burrow status` shows the `container:IMAGE` reference in the RUNTIME column.
+- **Limitations, by design:** the container filesystem is ephemeral (`--rm`),
+  so `burrow snapshot`/`restore` and seed scripts do not apply, and a crashed
+  daemon can leave the container running until the next start removes it with
+  `docker rm -f`. Use a native registry package when data must persist.
 
 ## Template variables
 
@@ -316,6 +374,9 @@ Burrow rejects the following before starting anything:
 - `memory` with no unit, zero, or an unknown unit; `cpu` outside 1-100 or
   without `%`.
 - Invalid `grace` or `idle_stop` durations.
+- `watch` entries that are absolute or traverse outside the project.
+- `container_port` or `seed` on a container service, or a `container:` use
+  value without an image reference.
 - Absolute seed paths or paths containing `..`; a seed file that does not exist.
 - A route without a dot, with invalid characters, or duplicated across services.
 - Unknown `needs` targets and dependency cycles.
