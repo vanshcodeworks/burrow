@@ -214,6 +214,32 @@ fn pkg_add_rejects_a_missing_seed_file() {
 }
 
 #[test]
+fn pkg_add_rejects_reserved_service_names_before_writing() {
+    let project =
+        TestProject::new("[project]\nname = \"pkgs\"\n\n[services.api]\nrun = 'cmd /C exit 0'\n");
+    let cache = project.path().join("cache");
+    let config_path = project.path().join("burrow.toml");
+    let before = fs::read_to_string(&config_path).expect("read config before");
+    let output = run_with_cache(
+        project.path(),
+        &cache,
+        &["pkg", "add", "postgres@16", "--service", "con"],
+    );
+    assert!(!output.status.success());
+    let text = stderr(&output);
+    assert!(
+        text.contains("reserved Windows device name"),
+        "stderr was:\n{text}"
+    );
+    assert_eq!(
+        fs::read_to_string(&config_path).expect("read config after"),
+        before,
+        "a rejected service name must not modify burrow.toml"
+    );
+    assert!(!cache.join("archives").exists());
+}
+
+#[test]
 fn pkg_remove_edits_the_config_without_downloading() {
     let project = TestProject::new(
         "[project]\nname = \"pkgs\"\n\n[services.api]\nrun = 'cmd /C exit 0'\n\n\

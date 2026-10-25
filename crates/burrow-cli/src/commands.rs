@@ -1508,6 +1508,12 @@ fn validate_service_name(name: &str) -> Result<()> {
              help: use lowercase letters, digits, `-`, and `_`, starting with a letter"
         );
     }
+    if burrow_config::is_reserved_windows_name(name) {
+        bail!(
+            "invalid service name `{name}`\n\
+             help: `{name}` is a reserved Windows device name; choose another name"
+        );
+    }
     Ok(())
 }
 

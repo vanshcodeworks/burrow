@@ -114,8 +114,14 @@ presence, file count, and byte count. The copy is built in a temporary directory
 on the same volume and renamed into place only after every file and the manifest
 have been written, so an interrupted snapshot never appears in
 `burrow snapshots`. Snapshot names are restricted to 1-64 lowercase letters,
-digits, `-`, `_`, and `.`, and must start with a letter or digit. Reparse points
-inside a data directory are rejected instead of followed.
+digits, `-`, `_`, and `.`, and must start with a letter or digit. Reserved
+Windows device names such as `con` and `nul` are rejected, because a snapshot
+name becomes a directory name. Reparse points inside a data directory are
+rejected instead of followed. Hard links are copied as independent files, so
+the snapshot preserves their contents but not the link relationship. A file
+with a non-default NTFS alternate data stream is refused rather than copied
+without that stream: `fs::copy` copies only the default stream, and silently
+dropping data would make the snapshot incomplete.
 
 `burrow restore <name>` stages every service's snapshot data first, then swaps
 one service directory at a time with `rename`. If a later swap fails, directories

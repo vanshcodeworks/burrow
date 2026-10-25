@@ -305,12 +305,23 @@ Other snapshot errors:
 
 - **Invalid name.** Names are 1-64 characters, start with a lowercase letter or
   digit, and contain only lowercase letters, digits, `-`, `_`, and `.`. Path
-  separators, drive prefixes, and `.`/`..` are rejected.
+  separators, drive prefixes, `.`/`..`, and reserved Windows device names
+  (`con`, `nul`, `com1`, and so on) are rejected.
 - **Snapshot already exists.** Choose another name; Burrow does not overwrite.
 - **Reparse point found.** Snapshots reject symlinks, junctions, and other
   reparse points instead of following them, so data outside the project cannot
   be captured silently. Remove the link from the data directory or snapshot a
   service that does not contain it.
+- **Alternate data stream found.** NTFS can attach extra streams to a file
+  (`record.txt:metadata`). A plain copy keeps only the default stream, so
+  Burrow refuses the snapshot and names the file and stream instead of dropping
+  data. Remove the stream, for example with
+  `Remove-Item -LiteralPath .burrow\data\db\record.txt -Stream metadata`, or
+  move the file outside the data directory. `Unblock-File` removes the common
+  `Zone.Identifier` stream.
+- **Hard links.** Snapshots copy each hard link as an independent file. Their
+  contents are preserved, but the link relationship is not: editing one copied
+  file does not change the other.
 - **Missing or invalid manifest.** `burrow snapshots` reports broken snapshot
   directories rather than hiding them. Delete the directory if it is not needed.
 - **Restore failed.** Restore stages every service first, then swaps directories

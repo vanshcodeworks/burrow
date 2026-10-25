@@ -232,3 +232,44 @@ Orphan backups remain preserved for manual inspection by design.
 
 **Next**: A2.7 hardlink/ADS/reserved-name coverage, then A3 fuzzing, A4
 property tests, A6 `doctor --report`, and the Phase 1 clean-machine pass.
+
+## 2026-10-26 - cycle 8: snapshot fidelity (A2.7)
+
+**Task**: Close the remaining A2.7 gaps: hard links, NTFS alternate data
+streams, and reserved Windows device names.
+
+**Outcome**: A snapshot now either captures the data it reports or refuses with
+a named file/stream. Names that would resolve to Windows devices are rejected
+before any path is built.
+
+**Commands and real results**:
+
+- `cargo test -p burrow-data` - **16/16 pass** (hard links copied as independent
+  files; `:metadata` stream refused; `con`/`nul`/`com1`/`lpt9`/`aux`/`prn`/
+  `con.txt` rejected; existing junction and restore tests still green).
+- `cargo test -p burrow-config --test config` - **22/22 pass** (reserved project
+  and service names).
+- `cargo test -p burrow-cli --test cli pkg_add_rejects_reserved_service_names_before_writing`
+  - **1/1 pass**; `burrow.toml` is unchanged and nothing is downloaded.
+- `cargo fmt --all --check` - green.
+- `cargo clippy --workspace --all-targets -- -D warnings` - green.
+- `cargo test --workspace --all-targets -- --test-threads=1` -
+  **178 passed, 0 failed across 19 suites**.
+- `cargo audit` - green, 3 allowed transitive warnings (`paste`, `lru` x2).
+- `cargo build --workspace --release` - green in 49.00 s.
+
+**Behavior changes**:
+
+- Snapshot copies hard links as independent files (contents preserved, link
+  relationship not preserved) and documents it.
+- A non-default NTFS stream (`file:name`) refuses the snapshot with
+  `alternate data stream `:name` would not be copied`; the file and stream are
+  named. Filesystems without stream support are treated as having none.
+- Reserved Windows device names are rejected in configuration, snapshot
+  manifests, snapshot names, and `pkg add --service`.
+
+**Not verified**: the non-Windows symlink branch; stream scanning on FAT/exFAT
+(the "not supported" path is implemented but not exercised here).
+
+**Next**: A3 fuzzing, A4 property tests, A6 `doctor --report`, then the Phase 1
+compatibility matrix and clean-machine pass.

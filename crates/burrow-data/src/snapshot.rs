@@ -139,6 +139,12 @@ pub fn validate_name(name: &str) -> Result<()> {
             || matches!(character, '-' | '_' | '.')
     });
     if valid_length && valid_start && valid_characters {
+        if is_reserved_windows_name(name) {
+            return Err(Error::ReservedName {
+                kind: "snapshot name",
+                name: name.to_owned(),
+            });
+        }
         Ok(())
     } else {
         Err(Error::InvalidSnapshotName(name.to_owned()))
@@ -153,10 +159,52 @@ fn validate_service_name(name: &str) -> Result<()> {
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'));
     if valid {
+        if is_reserved_windows_name(name) {
+            return Err(Error::ReservedName {
+                kind: "service name",
+                name: name.to_owned(),
+            });
+        }
         Ok(())
     } else {
         Err(Error::InvalidServiceName(name.to_owned()))
     }
+}
+
+/// Windows reserves these stems as device names, with or without an extension.
+/// A directory such as `.burrow/data/con` or a snapshot named `nul` would not
+/// be an ordinary file, so reject them before any path is built.
+fn is_reserved_windows_name(value: &str) -> bool {
+    let stem = value
+        .split('.')
+        .next()
+        .unwrap_or(value)
+        .to_ascii_uppercase();
+    matches!(
+        stem.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
 }
 
 /// Creates a snapshot of `services` under `.burrow/snapshots/<name>/`.
@@ -604,6 +652,12 @@ fn rollback(completed: &[Completed]) {
 }
 
 fn copy_tree(source: &Path, destination: &Path) -> Result<(u64, u64)> {
+    if let Some(stream) = first_alternate_stream(source)? {
+        return Err(Error::AlternateDataStream {
+            path: source.to_owned(),
+            stream,
+        });
+    }
     fs::create_dir_all(destination).map_err(|error| Error::io(destination, error))?;
     let mut files = 0;
     let mut bytes = 0;
@@ -621,12 +675,101 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<(u64, u64)> {
             files += child_files;
             bytes += child_bytes;
         } else if metadata.is_file() {
+            if let Some(stream) = first_alternate_stream(&path)? {
+                return Err(Error::AlternateDataStream { path, stream });
+            }
             fs::copy(&path, &destination_path).map_err(|error| Error::io(&path, error))?;
             files += 1;
             bytes += metadata.len();
         }
     }
     Ok((files, bytes))
+}
+
+/// Returns the first non-default NTFS stream on `path`, if any.
+///
+/// `fs::copy` copies the default stream only. Silently dropping an alternate
+/// stream would make a snapshot incomplete, so callers refuse instead.
+#[cfg(windows)]
+fn first_alternate_stream(path: &Path) -> Result<Option<String>> {
+    use std::os::windows::ffi::OsStrExt;
+
+    use windows::core::{HRESULT, PCWSTR};
+    use windows::Win32::Foundation::ERROR_HANDLE_EOF;
+    use windows::Win32::Storage::FileSystem::{
+        FindClose, FindFirstStreamW, FindNextStreamW, FindStreamInfoStandard,
+        WIN32_FIND_STREAM_DATA,
+    };
+
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut data = WIN32_FIND_STREAM_DATA::default();
+    let handle = match unsafe {
+        FindFirstStreamW(
+            PCWSTR(wide.as_ptr()),
+            FindStreamInfoStandard,
+            &mut data as *mut _ as *mut core::ffi::c_void,
+            None,
+        )
+    } {
+        Ok(handle) => handle,
+        Err(error) if stream_scan_unavailable(error.code()) => return Ok(None),
+        Err(error) => return Err(Error::io(path, std::io::Error::other(error.message()))),
+    };
+
+    let mut found = None;
+    loop {
+        let name = stream_name(&data);
+        if !name.eq_ignore_ascii_case("::$DATA") {
+            found = Some(name.strip_suffix(":$DATA").unwrap_or(&name).to_owned());
+            break;
+        }
+        match unsafe { FindNextStreamW(handle, &mut data as *mut _ as *mut core::ffi::c_void) } {
+            Ok(()) => {}
+            Err(error) if error.code() == HRESULT::from_win32(ERROR_HANDLE_EOF.0) => break,
+            Err(error) => {
+                unsafe {
+                    let _ = FindClose(handle);
+                }
+                return Err(Error::io(path, std::io::Error::other(error.message())));
+            }
+        }
+    }
+    unsafe {
+        let _ = FindClose(handle);
+    }
+    Ok(found)
+}
+
+#[cfg(windows)]
+fn stream_scan_unavailable(code: windows::core::HRESULT) -> bool {
+    use windows::Win32::Foundation::{
+        ERROR_HANDLE_EOF, ERROR_INVALID_FUNCTION, ERROR_NOT_SUPPORTED,
+    };
+
+    // FAT and other filesystems do not support streams; an empty listing and
+    // "not supported" both mean there is nothing that `fs::copy` would drop.
+    code == windows::core::HRESULT::from_win32(ERROR_HANDLE_EOF.0)
+        || code == windows::core::HRESULT::from_win32(ERROR_INVALID_FUNCTION.0)
+        || code == windows::core::HRESULT::from_win32(ERROR_NOT_SUPPORTED.0)
+}
+
+#[cfg(windows)]
+fn stream_name(data: &windows::Win32::Storage::FileSystem::WIN32_FIND_STREAM_DATA) -> String {
+    let length = data
+        .cStreamName
+        .iter()
+        .position(|character| *character == 0)
+        .unwrap_or(data.cStreamName.len());
+    String::from_utf16_lossy(&data.cStreamName[..length])
+}
+
+#[cfg(not(windows))]
+fn first_alternate_stream(_path: &Path) -> Result<Option<String>> {
+    Ok(None)
 }
 
 #[cfg(windows)]
@@ -661,6 +804,97 @@ mod tests {
         for name in ["a", "nightly", "before_migration", "v1.2"] {
             assert!(validate_name(name).is_ok(), "`{name}` must be accepted");
         }
+    }
+
+    #[test]
+    fn reserved_windows_device_names_are_rejected() {
+        for name in ["con", "nul", "com1", "lpt9", "aux", "prn", "con.txt"] {
+            let error = validate_name(name).expect_err("reserved snapshot name");
+            assert!(
+                error.to_string().contains("reserved Windows device name"),
+                "`{name}` produced: {error}"
+            );
+        }
+        for name in ["con", "NUL", "com1"] {
+            let error = super::validate_service_name(name).expect_err("reserved service name");
+            assert!(
+                error.to_string().contains("reserved Windows device name"),
+                "`{name}` produced: {error}"
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn hardlinked_files_are_copied_as_independent_files() {
+        let project = tempfile::tempdir().expect("temp");
+        let burrow = project.path().join(".burrow");
+        let db = burrow.join("data").join("db");
+        std::fs::create_dir_all(&db).expect("create data");
+        let original = db.join("original.txt");
+        std::fs::write(&original, "shared\n").expect("write original");
+        let link = db.join("link.txt");
+        std::fs::hard_link(&original, &link).expect("create hard link");
+
+        let manifest = create_snapshot(&burrow, "linked", &[service("db")]).expect("snapshot");
+        assert_eq!(manifest.services[0].files, 2);
+        let copied = snapshot_dir(&burrow, "linked").join("data").join("db");
+        assert_eq!(
+            std::fs::read_to_string(copied.join("original.txt")).expect("read copy"),
+            "shared\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(copied.join("link.txt")).expect("read link copy"),
+            "shared\n"
+        );
+
+        // The snapshot is a plain copy: editing it must not change live data.
+        std::fs::write(copied.join("link.txt"), "snapshot only\n").expect("edit snapshot copy");
+        assert_eq!(
+            std::fs::read_to_string(&original).expect("read original"),
+            "shared\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&link).expect("read link"),
+            "shared\n"
+        );
+
+        // And editing the live link must not change the snapshot.
+        std::fs::write(&link, "live only\n").expect("edit live link");
+        assert_eq!(
+            std::fs::read_to_string(copied.join("link.txt")).expect("read link copy"),
+            "snapshot only\n"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn alternate_data_streams_are_refused_instead_of_dropped() {
+        let project = tempfile::tempdir().expect("temp");
+        let burrow = project.path().join(".burrow");
+        let db = burrow.join("data").join("db");
+        std::fs::create_dir_all(&db).expect("create data");
+        let record = db.join("record.txt");
+        std::fs::write(&record, "visible\n").expect("write record");
+        let stream = db.join("record.txt:metadata");
+        std::fs::write(&stream, "hidden\n").expect("write alternate stream");
+        assert_eq!(
+            std::fs::read_to_string(&stream).expect("read alternate stream"),
+            "hidden\n"
+        );
+
+        let error = create_snapshot(&burrow, "streamed", &[service("db")])
+            .expect_err("alternate stream must be refused");
+        let message = error.to_string();
+        assert!(
+            message.contains("alternate data stream `:metadata`"),
+            "{message}"
+        );
+        assert!(message.contains("record.txt"), "{message}");
+        assert!(
+            !snapshot_dir(&burrow, "streamed").exists(),
+            "a refused snapshot must leave nothing behind"
+        );
     }
 
     #[test]

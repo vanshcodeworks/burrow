@@ -43,6 +43,39 @@ run = "api.exe"
 }
 
 #[test]
+fn rejects_reserved_windows_device_names() {
+    for name in ["con", "nul", "com1", "lpt9"] {
+        let error = parse(&format!(
+            r#"
+[project]
+name = "shop"
+[services.{name}]
+run = "x.exe"
+"#
+        ))
+        .expect_err("reserved service name must fail");
+        assert!(
+            error.to_string().contains("reserved Windows device name"),
+            "{name}: {error}"
+        );
+    }
+
+    let error = parse(
+        r#"
+[project]
+name = "con"
+[services.api]
+run = "api.exe"
+"#,
+    )
+    .expect_err("reserved project name must fail");
+    assert!(
+        error.to_string().contains("reserved Windows device name"),
+        "{error}"
+    );
+}
+
+#[test]
 fn requires_exactly_one_of_use_and_run() {
     let error = parse(
         r#"

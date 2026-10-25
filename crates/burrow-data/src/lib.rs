@@ -93,6 +93,25 @@ pub enum Error {
         /// Path of the reparse point.
         path: PathBuf,
     },
+    /// A file has an NTFS alternate data stream that a plain copy would drop.
+    #[error(
+        "refusing to snapshot {}: alternate data stream `{stream}` would not be copied; remove the stream or move the file outside the service data directory",
+        path.display()
+    )]
+    AlternateDataStream {
+        /// Path of the file with the stream.
+        path: PathBuf,
+        /// Stream name as reported by Windows, including the leading `:`.
+        stream: String,
+    },
+    /// A name would collide with a Windows device instead of becoming a file.
+    #[error("refusing to use {kind} `{name}`: it is a reserved Windows device name")]
+    ReservedName {
+        /// What the name describes, such as `snapshot name`.
+        kind: &'static str,
+        /// The rejected name.
+        name: String,
+    },
 }
 
 impl Error {

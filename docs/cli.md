@@ -326,7 +326,8 @@ recorded as `present = false`. The copy is built in a temporary directory on the
 same volume and renamed into place only after it succeeds, so a failed snapshot
 never appears in `burrow snapshots`. Snapshots are full copies, not incremental
 or deduplicated, and the name must be 1-64 characters of lowercase letters,
-digits, `-`, `_`, or `.`, starting with a letter or digit.
+digits, `-`, `_`, or `.`, starting with a letter or digit. Reserved Windows
+device names such as `con` and `nul` are rejected.
 
 `--json` prints the manifest: `version`, `name`, `created_at`, and a `services`
 array with `name`, `present`, `files`, and `bytes`.

@@ -39,9 +39,12 @@
         Tests: supervisor `tests/listeners.rs` (loopback/wildcard/IPv6,
         child attribution, kill cleanup); CLI `tests/listeners.rs` (wildcard
         warns, exposed wildcard accepted, loopback accepted). ADR 0006.
-  - [x] A2.7 (partial) junction rejection in snapshots now tested (real
-        mklink /J; error names the path; nothing left behind). Remaining:
-        hardlink + ADS in burrow-data, non-Windows symlink path.
+  - [x] A2.7 Snapshot entry hazards: junction rejection tested with a real
+        `mklink /J`; hard links copied as independent files; NTFS alternate
+        data streams refused with the file and stream named; reserved Windows
+        device names rejected for snapshot names and for project/service names
+        (`burrow-data` + `burrow-config` tests). Remaining: the non-Windows
+        symlink branch can only be exercised on Linux/macOS.
   - [x] A2.8 Interrupted-then-resumed package download: a local range server
         proves the `.part` file offset, the `Range` request, the completed
         hash-checked package, and removal of the partial file

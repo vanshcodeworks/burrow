@@ -35,7 +35,7 @@ at [`burrow.schema.json`](burrow.schema.json).
 
 | Key | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `name` | string | yes | 1-63 characters; lowercase ASCII letters, digits, and hyphens only; must not start or end with a hyphen. |
+| `name` | string | yes | 1-63 characters; lowercase ASCII letters, digits, and hyphens only; must not start or end with a hyphen; must not be a reserved Windows device name. |
 
 The project name is used in status output, messages, and the
 `BURROW_PROJECT` environment variable. It is not used as a container name or a
@@ -44,7 +44,8 @@ network identifier.
 ## `[services.<name>]`
 
 Service names follow the same rule as project names: 1-63 characters, lowercase
-ASCII letters, digits, and hyphens, with no leading or trailing hyphen. Names are
+ASCII letters, digits, and hyphens, with no leading or trailing hyphen, and no
+reserved Windows device name (`con`, `nul`, `com1`, and so on). Names are
 used as table keys, directory names under `.burrow/data/`, environment-variable
 prefixes, and command arguments.
 

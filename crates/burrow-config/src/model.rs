@@ -594,7 +594,52 @@ fn validate_identifier(path: &str, value: &str) -> Result<(), ConfigError> {
             "use lowercase ASCII letters, digits, and hyphens only",
         ));
     }
+    if is_reserved_windows_name(value) {
+        return Err(ConfigError::invalid(
+            path,
+            "must not be a reserved Windows device name such as `con`, `nul`, or `com1`",
+        ));
+    }
     Ok(())
+}
+
+/// Returns true when `value` is a reserved Windows device name.
+///
+/// Windows reserves `con`, `prn`, `aux`, `nul`, `com1`-`com9`, and
+/// `lpt1`-`lpt9` as device names, with or without an extension. Configuration
+/// names become directory names under `.burrow/data/`, so they must not use
+/// one.
+pub fn is_reserved_windows_name(value: &str) -> bool {
+    let stem = value
+        .split('.')
+        .next()
+        .unwrap_or(value)
+        .to_ascii_uppercase();
+    matches!(
+        stem.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
 }
 
 fn validate_registry_reference(path: &str, reference: &str) -> Result<(), ConfigError> {

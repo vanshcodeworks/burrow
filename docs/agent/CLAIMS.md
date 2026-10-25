@@ -88,7 +88,10 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | Claim | Evidence | Status |
 | --- | --- | --- |
 | Orphan-free under daemon force-kill (M1, end-to-end) | `tests/adversarial.rs::a_force_killed_daemon_leaves_no_orphans_and_the_project_recovers` (3/3 runs) | verified |
-| Junctions in data directories are refused (M6) | `snapshot.rs::a_junction_inside_a_data_directory_is_rejected` (real mklink /J) | verified |
+| Junctions in data directories are refused (M6) | `snapshot.rs::a_junction_inside_a_data_directory_is_rejected` (real mklink /J) | verified (non-Windows symlink path not exercised here) |
+| Hard links are copied by content, not identity | `snapshot.rs::hardlinked_files_are_copied_as_independent_files`: two hard links are copied, both contents match, and editing either the snapshot or live copy does not change the other | verified |
+| NTFS alternate data streams are refused, not silently dropped | `snapshot.rs::alternate_data_streams_are_refused_instead_of_dropped`: a `:metadata` stream is created, the snapshot fails with an error naming `:metadata`, and no snapshot directory is left behind | verified (NTFS; non-stream filesystems return an empty list) |
+| Reserved Windows device names are rejected | `snapshot.rs::reserved_windows_device_names_are_rejected` (`con`, `nul`, `com1`, `lpt9`, `aux`, `prn`, `con.txt`); `burrow-config` `rejects_reserved_windows_device_names` for project and service names | verified |
 | Dependency audit green (CI claim) | `cargo audit` locally green after zip 9.1.0 (`fbd6459`); CI job unchanged | verified |
 | Corrupt state/ports recovery | `tests/data_safety.rs`: corrupt `state.json` fails loudly, is never deleted, and recovers after removal; truncated `ports.json` fails startup with `invalid port assignment file` and recovers after removal | verified |
 | Interrupted snapshot leaves no listed debris | `tests/data_safety.rs::half_written_snapshot_is_never_listed`: a crash-simulated `.burrow-tmp-*` directory is not listed, not restored, and does not block a later snapshot | verified |
