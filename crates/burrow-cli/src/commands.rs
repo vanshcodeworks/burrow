@@ -116,6 +116,7 @@ pub async fn up(options: &Options, services: Vec<String>, detach: bool, yes: boo
 /// Failing here, before anything starts, keeps the remedy visible instead of
 /// surfacing an engine error from the detached daemon.
 async fn preflight_containers(project: &Project, selected: &[String]) -> Result<()> {
+    project::ensure_known_services(&project.config, selected)?;
     let included = project
         .config
         .selected_services(selected)
@@ -477,8 +478,13 @@ pub async fn restore(options: &Options, name: String) -> Result<()> {
     let project = Project::load(options.project.clone())?;
     ensure_data_is_quiet(&project).await?;
     recover_interrupted_data(&project)?;
-    let report = burrow_data::restore_snapshot(&project.burrow_dir, &name)
-        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    let report = burrow_data::restore_snapshot(&project.burrow_dir, &name).map_err(|error| {
+        if let burrow_data::Error::SnapshotNotFound(_) = &error {
+            anyhow::anyhow!("{error}\nhelp: run `burrow snapshots` to list existing snapshots")
+        } else {
+            anyhow::anyhow!("{error}")
+        }
+    })?;
 
     if options.json {
         println!("{}", serde_json::to_string_pretty(&report)?);

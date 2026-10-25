@@ -40,12 +40,7 @@ impl Project {
     pub fn load(directory: Option<PathBuf>) -> Result<Self> {
         let dir = resolve_directory(directory)?;
 
-        let config = burrow_config::load(&dir).map_err(|error| {
-            anyhow::anyhow!(
-                "{error}\nnote: expected burrow.toml in {}\nhelp: run `burrow init` to create one",
-                dir.display()
-            )
-        })?;
+        let config = burrow_config::load(&dir).map_err(|error| config_error(&dir, error))?;
         let config_hash = config.executable_hash();
         let burrow_dir = dir.join(BURROW_DIR);
 
@@ -70,6 +65,25 @@ impl Project {
     /// Opens the per-project port allocator.
     pub fn ports(&self) -> Result<PortAllocator> {
         PortAllocator::load(&self.burrow_dir).map_err(Into::into)
+    }
+}
+
+/// Adds the `burrow init` hint only when `burrow.toml` is missing.
+///
+/// A parse error, an invalid field, or a dependency cycle means the file exists
+/// and should be fixed. Suggesting `burrow init` there is misleading.
+fn config_error(dir: &Path, error: burrow_config::ConfigError) -> anyhow::Error {
+    if matches!(
+        &error,
+        burrow_config::ConfigError::Io { source, .. }
+            if source.kind() == std::io::ErrorKind::NotFound
+    ) {
+        anyhow::anyhow!(
+            "{error}\nnote: expected burrow.toml in {}\nhelp: run `burrow init` to create one",
+            dir.display()
+        )
+    } else {
+        anyhow::anyhow!("{error}")
     }
 }
 
@@ -531,12 +545,46 @@ pub fn record_package_refs(project: &Project) -> Result<()> {
         .map_err(|error| anyhow::anyhow!("{error}"))
 }
 
+/// Rejects service names that are not in the configuration.
+///
+/// `Config::selected_services` reports this as an invalid configuration, which
+/// is misleading when the name came from the command line rather than from
+/// `burrow.toml`. Name the valid choices instead.
+pub fn ensure_known_services(config: &Config, selected: &[String]) -> Result<()> {
+    let unknown = selected
+        .iter()
+        .filter(|name| !config.services.contains_key(*name))
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+
+    let names = unknown
+        .iter()
+        .map(|name| format!("`{name}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    bail!(
+        "unknown service{plural} {names}\n\
+         help: choose one of: {available}",
+        plural = if unknown.len() == 1 { "" } else { "s" },
+        available = config
+            .services
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
 /// Resolves ports, secrets, packages, templates, and process specifications.
 pub async fn resolve(
     project: &Project,
     selected: &[String],
     allocator: &mut PortAllocator,
 ) -> Result<ResolvedProject> {
+    ensure_known_services(&project.config, selected)?;
     resolve_inner(project, selected, allocator, true).await
 }
 
@@ -551,6 +599,7 @@ pub async fn resolve_for_shell(
     selected: &[String],
     install: bool,
 ) -> Result<ResolvedProject> {
+    ensure_known_services(&project.config, selected)?;
     let mut allocator = project.ports()?;
     if let Some(state) = crate::control::load_live_state(&project.dir).await? {
         for (name, snapshot) in &state.services {
@@ -1162,4 +1211,70 @@ pub fn restart_order(
     let mut stop_order = start_order.clone();
     stop_order.reverse();
     Ok((stop_order, start_order))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{config_error, ensure_known_services};
+    use burrow_config::ConfigError;
+    use std::path::Path;
+
+    #[test]
+    fn an_unknown_selected_service_lists_valid_names() {
+        let config: burrow_config::Config = serde_json::from_str(
+            r#"{"project":{"name":"demo"},"services":{"api":{"run":"cmd /c echo hi"},"db":{"use":"postgres@16"}}}"#,
+        )
+        .expect("config");
+        let message = ensure_known_services(&config, &["nope".to_owned()])
+            .expect_err("must fail")
+            .to_string();
+        assert!(message.starts_with("unknown service `nope`"), "{message}");
+        assert!(
+            message.contains("help: choose one of: api, db"),
+            "{message}"
+        );
+        assert!(!message.contains("invalid configuration"), "{message}");
+    }
+
+    #[test]
+    fn known_selected_services_pass() {
+        let config: burrow_config::Config = serde_json::from_str(
+            r#"{"project":{"name":"demo"},"services":{"api":{"run":"cmd /c echo hi"}}}"#,
+        )
+        .expect("config");
+        assert!(ensure_known_services(&config, &["api".to_owned()]).is_ok());
+        assert!(ensure_known_services(&config, &[]).is_ok());
+    }
+
+    #[test]
+    fn a_missing_config_suggests_burrow_init() {
+        let error = ConfigError::Io {
+            path: Path::new(r"C:\project\burrow.toml").to_path_buf(),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "not found"),
+        };
+        let message = config_error(Path::new(r"C:\project"), error).to_string();
+        assert!(message.contains("note: expected burrow.toml"));
+        assert!(message.contains("burrow init"));
+    }
+
+    #[test]
+    fn an_invalid_config_does_not_suggest_burrow_init() {
+        let error = ConfigError::Parse {
+            file: "burrow.toml".to_owned(),
+            message: "unknown field `nmae`".to_owned(),
+        };
+        let message = config_error(Path::new(r"C:\project"), error).to_string();
+        assert!(!message.contains("burrow init"));
+        assert!(message.contains("unknown field"));
+    }
+
+    #[test]
+    fn a_permission_error_does_not_suggest_burrow_init() {
+        let error = ConfigError::Io {
+            path: Path::new(r"C:\project\burrow.toml").to_path_buf(),
+            source: std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"),
+        };
+        let message = config_error(Path::new(r"C:\project"), error).to_string();
+        assert!(!message.contains("burrow init"));
+    }
 }

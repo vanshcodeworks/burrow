@@ -1131,6 +1131,18 @@ fn snapshots_restore_data_atomically_and_reset_removes_it() {
         "a directory absent at snapshot time must be removed"
     );
 
+    let missing = run_in(project.path(), &["restore", "missing"]);
+    assert!(!missing.status.success());
+    let missing_text = stderr(&missing);
+    assert!(
+        missing_text.contains("snapshot `missing` does not exist"),
+        "stderr:\n{missing_text}"
+    );
+    assert!(
+        missing_text.contains("burrow snapshots"),
+        "stderr:\n{missing_text}"
+    );
+
     let list = run_in(project.path(), &["snapshots", "--json"]);
     assert!(list.status.success(), "{}", stderr(&list));
     let listed: serde_json::Value = serde_json::from_str(&stdout(&list)).expect("json");
