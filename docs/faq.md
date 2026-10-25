@@ -170,7 +170,7 @@ process normally. See the [configuration reference](config-reference.md#idle_sto
 Windows may not resolve `*.localhost` on your machine. Use the direct loopback
 URL from `burrow status`, or add the name to your hosts file. The proxy still
 routes by the `Host` header. Details are in
-[`troubleshooting.md`](troubleshooting.md#httphttpssomethinglocalhost-does-not-resolve).
+[`troubleshooting.md`](troubleshooting.md#httpsomethinglocalhost-does-not-resolve).
 
 ## Is the reverse proxy reachable from other machines?
 

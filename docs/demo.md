@@ -2,8 +2,8 @@
 
 A five-minute walkthrough of Burrow using `examples/node-postgres`. This page is
 the recording script; no video or GIF is published yet. Every command is real,
-and the output shown below comes from a recorded run on the benchmark machine.
-PIDs, ports, timings, and log text change between runs.
+and the output shown below is representative of recorded runs on the benchmark
+machine. PIDs, ports, cache paths, timings, and log text change between runs.
 
 For a clean first-run recording, start from a fresh checkout, or delete the
 example's disposable `.burrow` directory. The 356 MiB PostgreSQL archive stays in
@@ -46,7 +46,7 @@ runs of this configuration do not prompt. On a cold cache, download progress for
 ```text
 Burrow is running in the background for `node-postgres`
   api              healthy  http://api.localhost
-  db               healthy  postgres://postgres@127.0.0.1:43655/postgres
+  db               healthy  postgres://postgres@127.0.0.1:45242/postgres
 
   logs:   burrow logs -f
   status: burrow status
@@ -89,11 +89,11 @@ The seed row is created once, after PostgreSQL passes its health check.
 Representative output from one run:
 
 ```text
-Project: node-postgres  (pid 28324, control 127.0.0.1:31560)
+Project: node-postgres  (pid 37584, control 127.0.0.1:37221)
 
-SERVICE  STATE    PORT   RAM        CPU   UPTIME  URL
-api      healthy  42498  54.9 MiB   0.0%  5s      http://api.localhost
-db       healthy  43655  110.3 MiB  0.0%  6s      postgres://postgres@127.0.0.1:43655/postgres
+SERVICE  STATE    RUNTIME         PORT   RAM        CPU   UPTIME  URL
+api      healthy  -               44058  50.8 MiB   0.0%  2s      http://api.localhost
+db       healthy  postgres@16.15  45242  109.0 MiB  0.0%  3s      postgres://postgres@127.0.0.1:45242/postgres
 ```
 
 Point out that `RAM` is each service's working set, the daemon is separate, and
@@ -111,16 +111,20 @@ Burrow doctor · node-postgres (P:\Burrow\examples\node-postgres)
   ok    platform           windows (x86_64)
   ok    session            normal user token (not elevated)
   ok    config             burrow.toml is valid (2 services)
-  ok    cache              C:\Users\Asus\AppData\Local\burrow\cache (1.3 GiB)
-  ok    daemon             running (pid 28324, ready, 2 services)
+  ok    cache              P:\Burrow\target\benchmark-cache (1.3 GiB)
+  ok    daemon             running (pid 37584, ready, 2 services)
   ok    trust              commands approved for this configuration (hash a9c061837826)
   ok    secrets            generated passwords present for 2 services
-  ok    package db         postgres@16.15 installed in C:\Users\Asus\AppData\Local\burrow\cache\packages\43bb45f173a6f08cf1d29a97a6d8deb119e8e8093a24c00d2d1001a0ccaa8281
+  ok    package db         postgres@16.15 installed in P:\Burrow\target\benchmark-cache\packages\43bb45f173a6f08cf1d29a97a6d8deb119e8e8093a24c00d2d1001a0ccaa8281
   ok    command api        `node` resolves to C:\Program Files\nodejs\node.exe
   ok    proxy              listening on port 80 for 1 route
+  ok    listeners          2 supervised listeners; none accept non-loopback traffic without expose
 
-10 ok, 0 warnings, 0 problems
+11 ok, 0 warnings, 0 problems
 ```
+
+This run used a benchmark-specific cache directory. A normal install uses
+`%LOCALAPPDATA%\burrow\cache`.
 
 Say: “`doctor` is read-only. Every failure includes a remedy, and `--json` makes
 the same report machine-readable for CI.”
@@ -134,10 +138,10 @@ the same report machine-readable for CI.”
 Representative output:
 
 ```text
-db           2026-10-24 18:14:33.273 IST [35404] LOG:  starting PostgreSQL 16.15, compiled by Visual C++ build 1944, 64-bit
-db           2026-10-24 18:14:33.274 IST [35404] LOG:  listening on IPv4 address "127.0.0.1", port 43655
-db           2026-10-24 18:14:33.364 IST [35404] LOG:  database system is ready to accept connections
-api          API listening on http://127.0.0.1:42498
+db           2026-10-26 04:25:44.581 IST [31880] LOG:  starting PostgreSQL 16.15, compiled by Visual C++ build 1944, 64-bit
+db           2026-10-26 04:25:44.582 IST [31880] LOG:  listening on IPv4 address "127.0.0.1", port 45242
+db           2026-10-26 04:25:44.682 IST [31880] LOG:  database system is ready to accept connections
+api          API listening on http://127.0.0.1:44058
 ```
 
 ```powershell
@@ -207,8 +211,8 @@ Final message:
 
 > Burrow runs the stack as native processes, verifies managed downloads, gives
 > every service a stable loopback port, and keeps the whole environment small.
-> The measured warm start for this example is 1.87-1.95 seconds, with the
-> daemon at 10.6-10.7 MB RSS. The numbers and method are in
+> The measured warm start for this example is 1.84-1.88 seconds, with the
+> daemon at 10.9-11.0 MB RSS. The numbers and method are in
 > [`benchmarks.md`](benchmarks.md).
 
 ## Recovery beats
@@ -218,7 +222,7 @@ diagnostic instead of hiding it:
 
 | Symptom | Recovery |
 | --- | --- |
-| `api.localhost` does not resolve | Switch to `http://127.0.0.1:<api-port>` from `burrow status`, or add the hosts entry shown in [`troubleshooting.md`](troubleshooting.md#httphttpssomethinglocalhost-does-not-resolve). |
+| `api.localhost` does not resolve | Switch to `http://127.0.0.1:<api-port>` from `burrow status`, or add the hosts entry shown in [`troubleshooting.md`](troubleshooting.md#httpsomethinglocalhost-does-not-resolve). |
 | A port is occupied | Run `burrow down`, then `burrow up` again; automatic ports are probed and remembered. |
 | PostgreSQL initialization fails | Confirm the terminal is not elevated, then `burrow reset db` and `burrow up`. |
 | A service is unhealthy | Run `burrow logs <service>` and read the last error; the daemon log is `.burrow/daemon.log`. |
