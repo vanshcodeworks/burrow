@@ -2,40 +2,46 @@
 
 ## Current focus
 
-Tier A2 adversarial suite. A2.6 listener inspection is complete and green.
-Done: orphan-kill (A2.1), half-written snapshot debris (A2.2 partial), corrupt
-state/ports (A2.3 partial), port collisions (A2.4), secrets-scan (A2.5),
+Tier A2 adversarial suite is complete except A2.7 hardlink/ADS coverage.
+Done: orphan-kill (A2.1), interrupted restore/init/seed (A2.2), corrupt
+state/ports/secrets (A2.3), port collisions (A2.4), secrets-scan (A2.5),
 listener inspection (A2.6), junction rejection (A2.7 partial), and
 interrupted-download resume (A2.8).
 
-Next: A2.2 interrupted restore/seed/initdb recovery, A2.3 corrupt secrets and
-`doctor` live-state preservation, then A2.7 hardlink/ADS coverage, A3 fuzzing,
-A4 property tests, A6 `doctor --report`.
+Next: A2.7 hardlink/ADS/reserved-name coverage, then A3 fuzzing, A4 property
+tests, A6 `doctor --report`, then the Phase 1 compatibility matrix and
+clean-machine pass.
 
-## Last cycle summary (2026-10-26, cycle 6)
+## Last cycle summary (2026-10-26, cycle 7)
 
-- **New-user README pass**: followed the Node.js + PostgreSQL example from a
-  removed `.burrow` with the release binary. Both services healthy in 10.28 s
-  (warm cache, fresh cluster); routed URL returned 200; doctor 11 ok/0/0;
-  `down` in 0.61 s with no surviving PIDs.
-- **Fixed documentation contradictions**: README limitations (registry
-  packages, opt-in `watch`, container fallback), FAQ registry/watch answers,
-  and the warm-start wording.
-- **Created** `docs/agent/FRICTION.md`. This was not a clean machine; the
-  Phase 1 VM/Sandbox pass remains.
-- A2.6 (listener inspection) shipped earlier this run at `cd8b22a`; see LOG.
-- No product code changed in cycle 6, so the cycle-5 full gate remains the
-  latest verified result (164 tests / 19 suites).
+- **A2.2 crash-safe data operations**: `burrow restore` writes
+  `.burrow/data/.burrow-restore-journal.json` before the first swap and marks it
+  committed only after every swap. Daemon startup and `snapshot`/`restore`/
+  `reset` roll an uncommitted restore back (or finish cleanup for a committed
+  one). Staging without a journal is removed; an orphan backup is refused and
+  preserved. Non-empty uninitialized data directories are moved to
+  `.burrow-init-failed-*` before `initdb` retries; empty directories are left.
+  PostgreSQL seeds run with `psql --single-transaction`.
+- **A2.3 corrupt secrets**: `doctor` now parses `.burrow/secrets` with the same
+  schema as `up`/`env`. A corrupt file fails `up`/`env` and the `secrets` check
+  with a delete-to-regenerate remedy, is never overwritten, and leaves the
+  running daemon and its `state.json` identity fields intact; `down` still
+  works and deleting the file regenerates secrets.
+- **Evidence**: ADR 0007, `architecture.md`, `cli.md`, `security.md`,
+  `troubleshooting.md`, `CLAIMS.md`, and `QUEUE.md` updated. New tests:
+  `burrow-data` 13/13, `burrow-cli` doctor 6/6, `tests/data_safety.rs` 6/6.
+- **Not exercised**: a real kill during a live `initdb` or `psql` seed. Recovery
+  is proven at the journal/data-directory level and by killing between swaps.
 
-## Check suite status (last full run, cycle 5)
+## Check suite status (cycle 7 full run)
 
 - `cargo fmt --all --check`: **green**
 - `cargo clippy --workspace --all-targets -- -D warnings`: **green**
 - `cargo test --workspace --all-targets -- --test-threads=1`: **green,
-  164 tests / 19 suites**.
+  173 tests / 19 suites**.
 - `cargo audit`: **green** (3 allowed transitive warnings: `paste`
   unmaintained; `lru` unsound x2).
-- `cargo build --workspace --release`: **green**, 1m03s.
+- `cargo build --workspace --release`: **green**, 52.20 s.
 - `cargo-deny` is still not installed; `cargo audit` is the dependency gate.
 
 ## Environment notes
@@ -49,5 +55,6 @@ A4 property tests, A6 `doctor --report`.
 
 ## Known bugs / follow-ups
 
-See `QUEUE.md`. Remaining A2 items, A3/A4/A6, and the untested Podman path are
-the open verification gaps.
+See `QUEUE.md`. Remaining A2.7, A3/A4/A6, and the untested Podman path are the
+open verification gaps. Phase 1 still needs a true clean-machine pass; cycle 6
+used the dev machine with a warm package cache.

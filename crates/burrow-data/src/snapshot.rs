@@ -8,8 +8,11 @@
 //!
 //! Restoring copies the snapshot into a staging directory first, then swaps one
 //! service directory at a time with `rename`. Each service directory is either
-//! the old one or the restored one, never a partially copied mix. If a swap
-//! fails, directories that were already replaced are rolled back.
+//! the old one or the restored one, never a partially copied mix. A journal
+//! written before the first swap lets the next `burrow up` (or `restore`)
+//! roll an interrupted restore back to the pre-restore directories. If every
+//! swap completed, the journal is marked committed first, so recovery finishes
+//! the cleanup instead of undoing the restore.
 //!
 //! Snapshots intentionally do not understand database formats. The CLI requires
 //! the project daemon to be stopped, which makes a plain directory copy safe for
@@ -34,6 +37,8 @@ const DATA_DIR: &str = "data";
 const TEMP_PREFIX: &str = ".burrow-tmp-";
 const RESTORE_PREFIX: &str = ".burrow-restore-";
 const BACKUP_PREFIX: &str = ".burrow-backup-";
+const RESTORE_JOURNAL_FILE: &str = ".burrow-restore-journal.json";
+const RESTORE_JOURNAL_VERSION: u32 = 1;
 
 /// One service captured by a snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +85,32 @@ pub struct RestoreReport {
     pub name: String,
     /// Service data directories that were replaced or removed.
     pub services: Vec<String>,
+}
+
+/// Result of recovering an interrupted restore.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RestoreRecovery {
+    /// True when every swap had completed and recovery only finished cleanup.
+    /// False when the restore was rolled back to the pre-restore directories.
+    pub committed: bool,
+    /// Services named by the interrupted restore journal.
+    pub services: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RestoreJournal {
+    version: u32,
+    nonce: String,
+    snapshot: String,
+    committed: bool,
+    services: Vec<RestoreJournalService>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RestoreJournalService {
+    name: String,
+    present: bool,
+    had_original: bool,
 }
 
 /// Returns the snapshot root for a project.
@@ -275,6 +306,11 @@ pub fn read_manifest(snapshot_dir: &Path) -> Result<SnapshotManifest> {
 /// The caller must stop the project first. The restored manifest is authoritative
 /// for which services are touched: services added to `burrow.toml` after the
 /// snapshot was taken are left alone.
+///
+/// A journal is written before the first live directory is touched. If the
+/// process dies mid-restore, [`recover_interrupted_restore`] rolls the swapped
+/// services back. Once every swap succeeds the journal is marked committed, so
+/// recovery finishes cleanup instead of undoing a completed restore.
 pub fn restore_snapshot(burrow_dir: &Path, name: &str) -> Result<RestoreReport> {
     validate_name(name)?;
     let source = snapshot_dir(burrow_dir, name);
@@ -292,6 +328,10 @@ pub fn restore_snapshot(burrow_dir: &Path, name: &str) -> Result<RestoreReport> 
         });
     }
 
+    // A previous restore may have been interrupted. Resolve it before this
+    // restore starts so its backups cannot be mistaken for current data.
+    recover_interrupted_restore(burrow_dir)?;
+
     let data_root = burrow_dir.join(DATA_DIR);
     fs::create_dir_all(&data_root).map_err(|error| Error::io(&data_root, error))?;
     let nonce = format!("{}-{}", std::process::id(), super::unix_now());
@@ -299,7 +339,6 @@ pub fn restore_snapshot(burrow_dir: &Path, name: &str) -> Result<RestoreReport> 
     fs::create_dir_all(&staging).map_err(|error| Error::io(&staging, error))?;
 
     // Stage every present service before touching live data.
-    let mut present = Vec::new();
     for service in &manifest.services {
         validate_service_name(&service.name)?;
         if !service.present {
@@ -321,14 +360,36 @@ pub fn restore_snapshot(burrow_dir: &Path, name: &str) -> Result<RestoreReport> 
             let _ = fs::remove_dir_all(&staging);
             return Err(error);
         }
-        present.push(service.name.clone());
     }
+
+    let journal_services = manifest
+        .services
+        .iter()
+        .map(|service| RestoreJournalService {
+            name: service.name.clone(),
+            present: service.present,
+            had_original: data_root.join(&service.name).is_dir(),
+        })
+        .collect::<Vec<_>>();
+    let mut journal = RestoreJournal {
+        version: RESTORE_JOURNAL_VERSION,
+        nonce: nonce.clone(),
+        snapshot: name.to_owned(),
+        committed: false,
+        services: journal_services,
+    };
+    write_journal(&data_root, &journal)?;
 
     let mut completed = Vec::new();
     for service in &manifest.services {
         let target = data_root.join(&service.name);
         let backup = data_root.join(format!("{BACKUP_PREFIX}{nonce}-{}", service.name));
-        let had_original = target.is_dir();
+        let entry = journal
+            .services
+            .iter()
+            .find(|entry| entry.name == service.name)
+            .expect("journal covers every manifest service");
+        let had_original = entry.had_original;
         if had_original {
             if let Err(error) = fs::rename(&target, &backup) {
                 rollback(&completed);
@@ -358,10 +419,17 @@ pub fn restore_snapshot(burrow_dir: &Path, name: &str) -> Result<RestoreReport> 
         });
     }
 
+    // Every live directory is in its restored state. Mark the journal
+    // committed before deleting the old copies: a crash after this point must
+    // keep the restored data, not roll it back.
+    journal.committed = true;
+    write_journal(&data_root, &journal)?;
+
     for entry in &completed {
         let _ = fs::remove_dir_all(&entry.backup);
     }
     let _ = fs::remove_dir_all(&staging);
+    let _ = fs::remove_file(journal_path(&data_root));
 
     Ok(RestoreReport {
         name: name.to_owned(),
@@ -371,6 +439,148 @@ pub fn restore_snapshot(burrow_dir: &Path, name: &str) -> Result<RestoreReport> 
             .map(|service| service.name.clone())
             .collect(),
     })
+}
+
+/// Recovers a restore that a crash interrupted.
+///
+/// Returns `None` when there is nothing to recover. When a journal exists and
+/// is not committed, every service that was already swapped is rolled back to
+/// its backup, restoring the pre-restore directories. When the journal is
+/// committed, the restored directories stay and only backup/staging cleanup is
+/// finished. Staging directories without a journal are copies from before the
+/// first swap and are removed. Backups without a journal are refused rather
+/// than guessed about.
+pub fn recover_interrupted_restore(burrow_dir: &Path) -> Result<Option<RestoreRecovery>> {
+    let data_root = burrow_dir.join(DATA_DIR);
+    let journal_path = journal_path(&data_root);
+    let journal = match fs::read_to_string(&journal_path) {
+        Ok(text) => {
+            let journal: RestoreJournal =
+                serde_json::from_str(&text).map_err(|error| Error::RestoreJournal {
+                    path: journal_path.clone(),
+                    message: error.to_string(),
+                })?;
+            if journal.version != RESTORE_JOURNAL_VERSION {
+                return Err(Error::RestoreJournal {
+                    path: journal_path,
+                    message: format!(
+                        "unsupported restore journal version {} (expected {RESTORE_JOURNAL_VERSION})",
+                        journal.version
+                    ),
+                });
+            }
+            Some(journal)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(Error::io(&journal_path, error)),
+    };
+
+    let Some(journal) = journal else {
+        let backups = entries_with_prefix(&data_root, BACKUP_PREFIX)?;
+        if !backups.is_empty() {
+            return Err(Error::RestoreJournal {
+                path: journal_path,
+                message: format!(
+                    "found restore backups without a journal ({}); inspect them before starting",
+                    backups
+                        .iter()
+                        .map(|path| path.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            });
+        }
+        remove_entries_with_prefix(&data_root, RESTORE_PREFIX)?;
+        let _ = fs::remove_file(journal_path.with_extension("tmp"));
+        return Ok(None);
+    };
+
+    let services = journal
+        .services
+        .iter()
+        .map(|service| service.name.clone())
+        .collect::<Vec<_>>();
+
+    if journal.committed {
+        for service in &journal.services {
+            remove_dir_if_exists(
+                &data_root.join(format!("{BACKUP_PREFIX}{}-{}", journal.nonce, service.name)),
+            )?;
+        }
+    } else {
+        // Reverse order mirrors the swap order. A service with a backup is
+        // restored to its original directory; a service that had no original
+        // loses the restored copy.
+        for service in journal.services.iter().rev() {
+            let target = data_root.join(&service.name);
+            let backup =
+                data_root.join(format!("{BACKUP_PREFIX}{}-{}", journal.nonce, service.name));
+            if service.had_original {
+                if backup.is_dir() {
+                    remove_dir_if_exists(&target)?;
+                    fs::rename(&backup, &target).map_err(|error| Error::io(&target, error))?;
+                }
+            } else {
+                remove_dir_if_exists(&target)?;
+            }
+        }
+    }
+
+    remove_dir_if_exists(&data_root.join(format!("{RESTORE_PREFIX}{}", journal.nonce)))?;
+    fs::remove_file(&journal_path).map_err(|error| Error::io(&journal_path, error))?;
+    let _ = fs::remove_file(journal_path.with_extension("tmp"));
+
+    Ok(Some(RestoreRecovery {
+        committed: journal.committed,
+        services,
+    }))
+}
+
+fn journal_path(data_root: &Path) -> PathBuf {
+    data_root.join(RESTORE_JOURNAL_FILE)
+}
+
+fn write_journal(data_root: &Path, journal: &RestoreJournal) -> Result<()> {
+    let path = journal_path(data_root);
+    let temporary = path.with_extension("tmp");
+    let encoded = serde_json::to_vec_pretty(journal).map_err(|error| Error::RestoreJournal {
+        path: path.clone(),
+        message: error.to_string(),
+    })?;
+    fs::write(&temporary, encoded).map_err(|error| Error::io(&temporary, error))?;
+    fs::rename(&temporary, &path).map_err(|error| Error::io(&path, error))?;
+    Ok(())
+}
+
+fn entries_with_prefix(directory: &Path, prefix: &str) -> Result<Vec<PathBuf>> {
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(Error::io(directory, error)),
+    };
+    let mut matches = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| Error::io(directory, error))?;
+        if entry.file_name().to_string_lossy().starts_with(prefix) {
+            matches.push(entry.path());
+        }
+    }
+    Ok(matches)
+}
+
+fn remove_entries_with_prefix(directory: &Path, prefix: &str) -> Result<()> {
+    for path in entries_with_prefix(directory, prefix)? {
+        remove_dir_if_exists(&path)?;
+    }
+    Ok(())
+}
+
+fn remove_dir_if_exists(path: &Path) -> Result<()> {
+    match fs::remove_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(Error::io(path, error)),
+    }
 }
 
 struct Completed {
@@ -433,7 +643,11 @@ fn is_reparse_point(metadata: &fs::Metadata) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_snapshot, list_snapshots, restore_snapshot, snapshot_dir, validate_name};
+    use super::{
+        create_snapshot, list_snapshots, recover_interrupted_restore, restore_snapshot,
+        snapshot_dir, validate_name, RestoreJournal, RestoreJournalService, BACKUP_PREFIX,
+        RESTORE_JOURNAL_FILE, RESTORE_JOURNAL_VERSION, RESTORE_PREFIX,
+    };
 
     fn service(name: &str) -> String {
         name.to_owned()
@@ -478,6 +692,126 @@ mod tests {
         );
         assert!(!burrow.join("data").join("api").exists());
         assert_eq!(list_snapshots(&burrow).expect("list").len(), 1);
+    }
+
+    fn write_test_journal(burrow: &std::path::Path, nonce: &str, committed: bool) {
+        let journal = RestoreJournal {
+            version: RESTORE_JOURNAL_VERSION,
+            nonce: nonce.to_owned(),
+            snapshot: "before".to_owned(),
+            committed,
+            services: vec![RestoreJournalService {
+                name: "db".to_owned(),
+                present: true,
+                had_original: true,
+            }],
+        };
+        std::fs::write(
+            burrow.join("data").join(RESTORE_JOURNAL_FILE),
+            serde_json::to_vec_pretty(&journal).expect("journal JSON"),
+        )
+        .expect("write journal");
+    }
+
+    #[test]
+    fn an_interrupted_restore_is_rolled_back_to_the_original_directory() {
+        let project = tempfile::tempdir().expect("temp");
+        let burrow = project.path().join(".burrow");
+        let data = burrow.join("data");
+        let live = data.join("db");
+        std::fs::create_dir_all(&live).expect("create live data");
+        std::fs::write(live.join("state.txt"), "current\n").expect("write current");
+
+        // Simulate the exact crash point after `target -> backup` and
+        // `staged -> target`: the snapshot copy is live, the original is in
+        // the backup, the staging directory still exists, and the journal is
+        // not committed.
+        let nonce = "test-rollback";
+        let staging = data.join(format!("{RESTORE_PREFIX}{nonce}"));
+        std::fs::create_dir_all(staging.join("db")).expect("create staging");
+        std::fs::write(staging.join("db").join("state.txt"), "snapshot\n").expect("write staged");
+        let backup = data.join(format!("{BACKUP_PREFIX}{nonce}-db"));
+        std::fs::rename(&live, &backup).expect("move original to backup");
+        std::fs::rename(staging.join("db"), &live).expect("install staged copy");
+        write_test_journal(&burrow, nonce, false);
+
+        let recovery = recover_interrupted_restore(&burrow)
+            .expect("recover")
+            .expect("recovery happened");
+        assert!(!recovery.committed);
+        assert_eq!(recovery.services, vec!["db".to_owned()]);
+        assert_eq!(
+            std::fs::read_to_string(live.join("state.txt")).expect("read live"),
+            "current\n",
+            "the pre-restore directory must be restored"
+        );
+        assert!(!backup.exists(), "backup must be consumed");
+        assert!(!staging.exists(), "staging must be removed");
+        assert!(
+            !data.join(RESTORE_JOURNAL_FILE).exists(),
+            "journal must be removed"
+        );
+    }
+
+    #[test]
+    fn a_committed_restore_is_kept_and_only_cleaned_up() {
+        let project = tempfile::tempdir().expect("temp");
+        let burrow = project.path().join(".burrow");
+        let data = burrow.join("data");
+        let live = data.join("db");
+        std::fs::create_dir_all(&live).expect("create live data");
+        std::fs::write(live.join("state.txt"), "restored\n").expect("write restored");
+
+        let nonce = "test-committed";
+        let backup = data.join(format!("{BACKUP_PREFIX}{nonce}-db"));
+        std::fs::create_dir_all(&backup).expect("create backup");
+        std::fs::write(backup.join("state.txt"), "old\n").expect("write old");
+        let staging = data.join(format!("{RESTORE_PREFIX}{nonce}"));
+        std::fs::create_dir_all(&staging).expect("create staging");
+        write_test_journal(&burrow, nonce, true);
+
+        let recovery = recover_interrupted_restore(&burrow)
+            .expect("recover")
+            .expect("recovery happened");
+        assert!(recovery.committed);
+        assert_eq!(
+            std::fs::read_to_string(live.join("state.txt")).expect("read live"),
+            "restored\n",
+            "a committed restore must not be rolled back"
+        );
+        assert!(!backup.exists(), "backup must be cleaned up");
+        assert!(!staging.exists(), "staging must be cleaned up");
+        assert!(!data.join(RESTORE_JOURNAL_FILE).exists());
+    }
+
+    #[test]
+    fn staging_without_a_journal_is_removed_but_backups_are_refused() {
+        let project = tempfile::tempdir().expect("temp");
+        let burrow = project.path().join(".burrow");
+        let data = burrow.join("data");
+        let staging = data.join(format!("{RESTORE_PREFIX}abandoned"));
+        std::fs::create_dir_all(staging.join("db")).expect("create staging");
+        std::fs::write(staging.join("db").join("state.txt"), "copy\n").expect("write copy");
+
+        assert!(
+            recover_interrupted_restore(&burrow)
+                .expect("recover")
+                .is_none(),
+            "staging alone is not a journaled restore"
+        );
+        assert!(!staging.exists(), "staging copy must be removed");
+
+        let backup = data.join(format!("{BACKUP_PREFIX}orphan-db"));
+        std::fs::create_dir_all(&backup).expect("create orphan backup");
+        let error = recover_interrupted_restore(&burrow).expect_err("backup without journal");
+        assert!(
+            error.to_string().contains("without a journal"),
+            "error was: {error}"
+        );
+        assert!(
+            backup.exists(),
+            "an unexplained backup must be preserved for inspection"
+        );
     }
 
     #[test]

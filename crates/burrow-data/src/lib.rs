@@ -22,9 +22,9 @@ use sha2::{Digest, Sha256};
 mod snapshot;
 
 pub use snapshot::{
-    create_snapshot, list_snapshots, read_manifest, restore_snapshot, snapshot_dir, snapshots_dir,
-    validate_name, RestoreReport, SnapshotManifest, SnapshotService, MANIFEST_FILE, SNAPSHOT_DIR,
-    SNAPSHOT_VERSION,
+    create_snapshot, list_snapshots, read_manifest, recover_interrupted_restore, restore_snapshot,
+    snapshot_dir, snapshots_dir, validate_name, RestoreRecovery, RestoreReport, SnapshotManifest,
+    SnapshotService, MANIFEST_FILE, SNAPSHOT_DIR, SNAPSHOT_VERSION,
 };
 
 /// Marker written after every `init` command has succeeded.
@@ -72,6 +72,14 @@ pub enum Error {
     #[error("{} is not a usable snapshot manifest: {message}", path.display())]
     Manifest {
         /// Manifest path.
+        path: PathBuf,
+        /// Explanation.
+        message: String,
+    },
+    /// A restore journal is invalid or incomplete.
+    #[error("{} is not a usable restore journal: {message}", path.display())]
+    RestoreJournal {
+        /// Journal path.
         path: PathBuf,
         /// Explanation.
         message: String,
@@ -204,6 +212,37 @@ pub fn reset(data_dir: &Path) -> Result<()> {
     }
 }
 
+/// Moves an uninitialized data directory aside before a registry `init` retry.
+///
+/// A killed `initdb` can leave a non-empty directory without the marker, and
+/// `initdb` refuses to reuse it. Moving it to
+/// `.burrow/data/.burrow-init-failed-<service>-<pid>-<unix>` lets the retry
+/// start clean without deleting whatever the partial run produced. A directory
+/// with a valid init marker is never moved.
+pub fn quarantine_uninitialized(data_dir: &Path) -> Result<Option<PathBuf>> {
+    if !data_dir.exists() || data_dir.join(INIT_MARKER).is_file() {
+        return Ok(None);
+    }
+    // An empty directory is already safe for `initdb` to use, so leave it
+    // alone instead of accumulating empty quarantine directories.
+    let mut entries = std::fs::read_dir(data_dir).map_err(|error| Error::io(data_dir, error))?;
+    if entries.next().is_none() {
+        return Ok(None);
+    }
+    let parent = data_dir.parent().unwrap_or_else(|| Path::new("."));
+    let name = data_dir
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "service".to_owned());
+    let quarantine = parent.join(format!(
+        ".burrow-init-failed-{name}-{}-{}",
+        std::process::id(),
+        unix_now()
+    ));
+    std::fs::rename(data_dir, &quarantine).map_err(|error| Error::io(data_dir, error))?;
+    Ok(Some(quarantine))
+}
+
 pub(crate) fn unix_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -214,7 +253,8 @@ pub(crate) fn unix_now() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        hash_file, mark_initialized, mark_seeded, needs_init, needs_seed, read_seed_state, reset,
+        hash_file, mark_initialized, mark_seeded, needs_init, needs_seed, quarantine_uninitialized,
+        read_seed_state, reset,
     };
 
     #[test]
@@ -263,5 +303,57 @@ mod tests {
         std::fs::write(data.join(super::SEED_MARKER), "not json").expect("write");
         assert!(needs_seed(&data));
         assert!(read_seed_state(&data).is_none());
+    }
+
+    #[test]
+    fn a_partial_init_directory_is_moved_aside_not_deleted() {
+        let directory = tempfile::tempdir().expect("temp");
+        let data = directory.path().join("data").join("db");
+        std::fs::create_dir_all(&data).expect("create partial data");
+        std::fs::write(data.join("partial.txt"), "half an initdb\n").expect("write partial");
+
+        let quarantine = quarantine_uninitialized(&data)
+            .expect("quarantine")
+            .expect("partial directory must be moved");
+        assert!(!data.exists(), "the retry must get a clean data directory");
+        assert_eq!(
+            std::fs::read_to_string(quarantine.join("partial.txt")).expect("read partial"),
+            "half an initdb\n",
+            "the partial run must be preserved"
+        );
+        assert!(
+            quarantine
+                .file_name()
+                .expect("quarantine name")
+                .to_string_lossy()
+                .starts_with(".burrow-init-failed-db-"),
+            "unexpected quarantine path: {}",
+            quarantine.display()
+        );
+
+        std::fs::create_dir_all(&data).expect("recreate data");
+        mark_initialized(&data).expect("mark initialized");
+        assert!(
+            quarantine_uninitialized(&data)
+                .expect("quarantine initialized")
+                .is_none(),
+            "an initialized data directory must never be moved"
+        );
+        assert!(data.join(super::INIT_MARKER).is_file());
+    }
+
+    #[test]
+    fn an_empty_uninitialized_directory_is_left_in_place() {
+        let directory = tempfile::tempdir().expect("temp");
+        let data = directory.path().join("data").join("db");
+        std::fs::create_dir_all(&data).expect("create empty data");
+
+        assert!(
+            quarantine_uninitialized(&data)
+                .expect("quarantine empty directory")
+                .is_none(),
+            "an empty directory is safe for initdb and must not be moved"
+        );
+        assert!(data.is_dir());
     }
 }

@@ -133,6 +133,24 @@ pub async fn run(project: Project, selected: Vec<String>) -> Result<()> {
         RuntimeState::remove(&project.dir)?;
     }
 
+    // A data restore is a multi-directory swap. If the previous process died
+    // mid-swap, roll it back before any service initializes over a missing
+    // directory. `burrow restore` performs the same recovery before a retry.
+    if let Some(recovery) = burrow_data::recover_interrupted_restore(&project.burrow_dir)
+        .with_context(|| {
+            format!(
+                "could not recover an interrupted restore under {}",
+                project.burrow_dir.join("data").display()
+            )
+        })?
+    {
+        warn!(
+            committed = recovery.committed,
+            services = ?recovery.services,
+            "recovered an interrupted restore"
+        );
+    }
+
     let mut allocator = project.ports()?;
     let listener = TcpListener::bind(("127.0.0.1", 0))
         .await
@@ -1218,6 +1236,15 @@ impl Daemon {
             };
             if !burrow_data::needs_init(&package.data_dir) {
                 continue;
+            }
+            if let Some(quarantine) = burrow_data::quarantine_uninitialized(&package.data_dir)
+                .map_err(|error| anyhow::anyhow!("service `{name}`: {error}"))?
+            {
+                warn!(
+                    service = name,
+                    path = %quarantine.display(),
+                    "moved an uninitialized data directory aside before retrying init"
+                );
             }
             if let Some(parent) = package.data_dir.parent() {
                 std::fs::create_dir_all(parent)

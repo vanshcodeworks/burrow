@@ -291,11 +291,11 @@ pub fn load_or_create_secrets(project: &Project) -> Result<BTreeMap<String, Stri
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-struct SecretsFile {
+pub(crate) struct SecretsFile {
     #[serde(default)]
-    version: u32,
+    pub(crate) version: u32,
     #[serde(default)]
-    secrets: BTreeMap<String, String>,
+    pub(crate) secrets: BTreeMap<String, String>,
 }
 
 /// Requires an explicit approval for this project's executable configuration.

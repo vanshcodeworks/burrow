@@ -45,6 +45,11 @@ mod tests {
             .iter()
             .any(|step| step.command.program == "initdb"));
         assert!(resolved.version.seed.is_some());
+        let seed = resolved.version.seed.as_ref().expect("seed command");
+        assert!(
+            seed.args.iter().any(|arg| arg == "--single-transaction"),
+            "the seed must run in one transaction so an interrupted seed rolls back"
+        );
         assert_eq!(
             resolved.version.health.as_ref().map(|health| health.tcp),
             Some(true)

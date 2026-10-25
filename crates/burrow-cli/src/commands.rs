@@ -357,11 +357,36 @@ async fn ensure_data_is_quiet(project: &Project) -> Result<()> {
     Ok(())
 }
 
+/// Resolves a restore that a previous crash interrupted before a new data
+/// operation starts. Recovery is silent on a clean project.
+fn recover_interrupted_data(project: &Project) -> Result<()> {
+    let recovery = burrow_data::recover_interrupted_restore(&project.burrow_dir)
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    if let Some(recovery) = recovery {
+        let action = if recovery.committed {
+            "finished cleanup for a completed restore"
+        } else {
+            "rolled back an interrupted restore; pre-restore data was kept"
+        };
+        eprintln!(
+            "note: {action} ({} service{})",
+            recovery.services.len(),
+            if recovery.services.len() == 1 {
+                ""
+            } else {
+                "s"
+            }
+        );
+    }
+    Ok(())
+}
+
 /// Implements `burrow snapshot <name>`.
 pub async fn snapshot(options: &Options, name: String) -> Result<()> {
     let project = Project::load(options.project.clone())?;
     burrow_data::validate_name(&name).map_err(|error| anyhow::anyhow!("{error}"))?;
     ensure_data_is_quiet(&project).await?;
+    recover_interrupted_data(&project)?;
     let services = project.config.services.keys().cloned().collect::<Vec<_>>();
     let manifest = burrow_data::create_snapshot(&project.burrow_dir, &name, &services)
         .map_err(|error| anyhow::anyhow!("{error}"))?;
@@ -450,6 +475,7 @@ pub fn snapshots(options: &Options) -> Result<()> {
 pub async fn restore(options: &Options, name: String) -> Result<()> {
     let project = Project::load(options.project.clone())?;
     ensure_data_is_quiet(&project).await?;
+    recover_interrupted_data(&project)?;
     let report = burrow_data::restore_snapshot(&project.burrow_dir, &name)
         .map_err(|error| anyhow::anyhow!("{error}"))?;
 
@@ -484,6 +510,7 @@ pub async fn reset(options: &Options, service: String) -> Result<()> {
         );
     }
     ensure_data_is_quiet(&project).await?;
+    recover_interrupted_data(&project)?;
     let directory = project.data_dir(&service);
     burrow_data::reset(&directory).map_err(|error| anyhow::anyhow!("{error}"))?;
 

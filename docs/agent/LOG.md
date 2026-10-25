@@ -188,3 +188,47 @@ clean-machine pass still has to repeat this from a fresh environment.
 and `doctor` live-state preservation, then A2.7 hardlink/ADS coverage.
 
 
+
+## 2026-10-26 - cycle 7: crash-safe restore/init/seed and corrupt secrets
+
+**Task**: Close A2.2 (interrupted restore/seed/initdb) and A2.3 (corrupt
+secrets and `doctor` live-state preservation) before launch work.
+
+**Outcome**: Restores are journaled and recover deterministically; partial
+initialization is preserved; PostgreSQL seeds are transactional; corrupt
+secrets fail loudly without data loss.
+
+**Commands and real results**:
+
+- `cargo test -p burrow-data` - **13/13 pass** (uncommitted rollback, committed
+  cleanup, staging without a journal, orphan backup refusal, junction, partial
+  init quarantine, empty directory left in place, seed marker lifecycle).
+- `cargo test -p burrow-cli --bin burrow doctor` - **6/6 pass**.
+- `cargo test -p burrow-cli --test data_safety -- --test-threads=1` -
+  **6/6 pass** (daemon startup rollback, snapshot rollback, corrupt secrets).
+- `cargo fmt --all --check` - green.
+- `cargo clippy --workspace --all-targets -- -D warnings` - green.
+- `cargo test --workspace --all-targets -- --test-threads=1` -
+  **173 passed, 0 failed across 19 suites**.
+- `cargo audit` - green, 3 allowed transitive warnings (`paste`, `lru` x2).
+- `cargo build --workspace --release` - green in 52.20 s.
+
+**Behavior changes**:
+
+- `restore` writes `.burrow/data/.burrow-restore-journal.json` before the first
+  swap and marks it committed before deleting backups. The next `up`,
+  `snapshot`, `restore`, or `reset` rolls back an uncommitted restore or
+  finishes cleanup for a committed one, printing a `note:` line.
+- A non-empty data directory without the init marker is moved to
+  `.burrow/data/.burrow-init-failed-<service>-<pid>-<unix>` before retry; empty
+  directories are left alone.
+- `psql` seeds run with `--single-transaction`.
+- `doctor` parses secrets with the `up`/`env` schema; a corrupt file fails the
+  `secrets` check with a delete-to-regenerate remedy and is never rewritten.
+
+**Not verified**: a real kill during a live `initdb` or `psql` seed. Recovery is
+proven at the journal/data-directory level and by killing between swaps.
+Orphan backups remain preserved for manual inspection by design.
+
+**Next**: A2.7 hardlink/ADS/reserved-name coverage, then A3 fuzzing, A4
+property tests, A6 `doctor --report`, and the Phase 1 clean-machine pass.

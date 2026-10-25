@@ -344,6 +344,14 @@ Restores every service recorded in the snapshot manifest. Services added to
 then swaps one service directory at a time and rolls back already-swapped
 directories if a later swap fails.
 
+A journal written before the first swap makes the operation crash-safe. If the
+process is killed mid-restore, the next `burrow up`, `snapshot`, `restore`, or
+`reset` rolls the uncommitted restore back to the pre-restore data (or finishes
+cleanup for a committed restore) and prints a `note:` line. A staging directory
+without a journal is removed; a backup directory without a journal is refused
+and left for inspection. Do not delete `.burrow/data/.burrow-backup-*` or
+`.burrow-restore-journal.json` by hand while diagnosing a crash.
+
 `--json` prints `{ "name": "...", "services": ["..."] }`. Run `burrow up`
 afterwards to start from the restored data.
 

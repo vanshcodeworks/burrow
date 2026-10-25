@@ -120,9 +120,15 @@ inside a data directory are rejected instead of followed.
 `burrow restore <name>` stages every service's snapshot data first, then swaps
 one service directory at a time with `rename`. If a later swap fails, directories
 already replaced are rolled back, so each service is left with either its old
-directory or the restored one, never a partial copy. Services that did not exist
-when the snapshot was taken are left untouched; a service recorded as absent has
-its current data removed.
+directory or the restored one, never a partial copy. A journal is written to
+`.burrow/data/.burrow-restore-journal.json` before the first swap. If the
+process dies mid-restore, the next `burrow up`, `snapshot`, `restore`, or
+`reset` rolls an uncommitted restore back to the pre-restore directories; a
+committed journal only needs its backups and staging directory cleaned up. A
+staging directory with no journal is removed. A backup directory with no journal
+is refused and left in place for inspection rather than guessed about. Services
+that did not exist when the snapshot was taken are left untouched; a service
+recorded as absent has its current data removed.
 
 `burrow reset <service>` removes that service's data directory and its
 initialization and seed markers. The next start initializes a fresh directory and
@@ -131,6 +137,14 @@ be stopped: copying a live database directory can capture a torn state. Stale
 state from a crashed daemon is authenticated before being treated as running.
 Snapshots are not aware of database formats and do not protect against another
 program writing to `.burrow/data/` at the same time.
+
+A killed registry `init` can leave a non-empty data directory without the
+initialization marker. Before retrying, Burrow moves that directory to
+`.burrow/data/.burrow-init-failed-<service>-<pid>-<unix>` instead of deleting
+it, so `initdb` starts clean and the partial output remains available for
+inspection. PostgreSQL's seed command runs inside a single transaction
+(`psql --single-transaction`), so a killed seed rolls back instead of leaving
+partial rows. Rationale and limits: [ADR 0007](decisions/0007-crash-safe-data-operations.md).
 
 
 ## Networking and reverse proxy (M4)

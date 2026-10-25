@@ -9,14 +9,23 @@
         → service port refuses, project recovers on the same port
         (tests/adversarial.rs, 3/3 runs). Remaining kill vectors: /T tree
         kill of the console, logoff scenarios.
-  - [x] A2.2 (partial) Half-written snapshot staging debris: a crash-simulated
-        `.burrow-tmp-*` directory is never listed, never restored, and does
-        not block later snapshots (`tests/data_safety.rs`). Remaining:
-        interrupted restore/seed/initdb with a killed daemon.
-  - [x] A2.3 (partial) Corrupt/truncated `state.json` fails loudly and is
-        never deleted; truncated `ports.json` fails startup with an actionable
-        error; deleting either file recovers (`tests/data_safety.rs`).
-        Remaining: corrupt `secrets`, live-state preservation under `doctor`.
+  - [x] A2.2 Interrupted data operations: a restore journal
+        (`.burrow/data/.burrow-restore-journal.json`) rolls an uncommitted
+        restore back on the next `up`/`snapshot`/`restore`/`reset`, or finishes
+        cleanup for a committed one; staging without a journal is removed and
+        an orphan backup is refused. Partial init directories are moved to
+        `.burrow/data/.burrow-init-failed-*` before retry, and PostgreSQL's
+        seed runs with `--single-transaction`. Tests: `burrow-data` unit tests
+        (rollback, committed cleanup, staging/orphan backup, quarantine) and
+        `tests/data_safety.rs` (daemon startup rollback, snapshot rollback).
+        A real kill during `initdb`/seed was simulated at the data-directory
+        level, not exercised against a live PostgreSQL process.
+  - [x] A2.3 Corrupt/truncated `state.json` fails loudly and is never deleted;
+        truncated `ports.json` fails startup with an actionable error; corrupt
+        `secrets` fails `up`/`env` without overwrite, `doctor --json` reports a
+        failure with a remedy while the running project and `state.json`
+        identity fields stay intact, and deleting the file regenerates it
+        (`tests/data_safety.rs`).
   - [x] A2.4 Port collisions across concurrent projects: a fixed-port
         collision fails the second project with a remedy, not a crash
         (`tests/cli.rs`, `6b815eb`).

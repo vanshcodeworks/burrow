@@ -4,6 +4,7 @@
 //! bind a port. Every failure carries a concrete remedy, and the command exits
 //! nonzero when any check fails so scripts can gate on it.
 
+use std::collections::BTreeMap;
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
@@ -14,7 +15,7 @@ use serde::Serialize;
 use crate::commandline;
 use crate::commands::Options;
 use crate::control;
-use crate::project::{self, Project};
+use crate::project::{self, Project, SecretsFile};
 use crate::state::RuntimeState;
 use crate::win;
 
@@ -428,18 +429,11 @@ fn short_hash(hash: &str) -> String {
 }
 
 fn missing_generated_secrets<'a>(
-    document: &serde_json::Value,
+    secrets: &BTreeMap<String, String>,
     services: impl Iterator<Item = &'a String>,
 ) -> Vec<String> {
     services
-        .filter(|name| {
-            document
-                .get("secrets")
-                .and_then(|value| value.as_object())
-                .and_then(|secrets| secrets.get(name.as_str()))
-                .and_then(|value| value.as_str())
-                .is_none()
-        })
+        .filter(|name| !secrets.contains_key(name.as_str()))
         .cloned()
         .collect()
 }
@@ -514,14 +508,14 @@ fn secrets_check(project: &Project, checks: &mut Vec<Check>) {
         }
     };
 
-    let parsed: serde_json::Value = match serde_json::from_str(&contents) {
+    let parsed: SecretsFile = match serde_json::from_str(&contents) {
         Ok(value) => value,
         Err(error) => {
             checks.push(
                 Check::new(
                     "secrets",
                     CheckStatus::Fail,
-                    format!(".burrow/secrets is not valid JSON: {error}"),
+                    format!(".burrow/secrets is not valid Burrow secrets: {error}"),
                 )
                 .with_remedy(
                     "delete .burrow/secrets to regenerate it; generated service passwords will change",
@@ -531,7 +525,7 @@ fn secrets_check(project: &Project, checks: &mut Vec<Check>) {
         }
     };
 
-    let missing = missing_generated_secrets(&parsed, project.config.services.keys());
+    let missing = missing_generated_secrets(&parsed.secrets, project.config.services.keys());
     if missing.is_empty() {
         checks.push(Check::new(
             "secrets",
@@ -960,31 +954,28 @@ fn single_line(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{missing_generated_secrets, single_line, Check, CheckStatus};
+    use std::collections::BTreeMap;
 
-    #[test]
-    fn generated_secrets_are_read_from_the_nested_object() {
-        let document = serde_json::json!({
-            "version": 0,
-            "secrets": {
-                "api": "secret",
-                "db": "secret"
-            }
-        });
-        let services = ["api".to_owned(), "db".to_owned()];
-        assert!(missing_generated_secrets(&document, services.iter()).is_empty());
+    use super::{missing_generated_secrets, single_line, Check, CheckStatus};
+    use crate::project::SecretsFile;
+
+    fn secrets(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+            .collect()
     }
 
     #[test]
-    fn missing_or_non_string_secrets_are_reported() {
-        let document = serde_json::json!({
-            "version": 0,
-            "secrets": {
-                "api": "secret",
-                "db": 42
-            },
-            "worker": "not a service secret"
-        });
+    fn generated_secrets_are_read_from_the_nested_object() {
+        let secrets = secrets(&[("api", "secret"), ("db", "secret")]);
+        let services = ["api".to_owned(), "db".to_owned()];
+        assert!(missing_generated_secrets(&secrets, services.iter()).is_empty());
+    }
+
+    #[test]
+    fn missing_secrets_are_reported() {
+        let secrets = secrets(&[("api", "secret")]);
         let services = [
             "api".to_owned(),
             "db".to_owned(),
@@ -992,8 +983,24 @@ mod tests {
             "cache".to_owned(),
         ];
         assert_eq!(
-            missing_generated_secrets(&document, services.iter()),
+            missing_generated_secrets(&secrets, services.iter()),
             ["db".to_owned(), "worker".to_owned(), "cache".to_owned()]
+        );
+    }
+
+    #[test]
+    fn invalid_secret_shapes_do_not_parse() {
+        assert!(
+            serde_json::from_str::<SecretsFile>(r#"{"version":0,"secrets":{"db":42}}"#).is_err(),
+            "a non-string secret must fail exactly like `burrow up` does"
+        );
+        assert!(
+            serde_json::from_str::<SecretsFile>(r#"{"version":0,"secrets":[]}"#).is_err(),
+            "a non-object secrets map must fail exactly like `burrow up` does"
+        );
+        assert!(
+            serde_json::from_str::<SecretsFile>(r#"{"version":0}"#).is_ok(),
+            "a document with no secrets map is generated on the next start"
         );
     }
 

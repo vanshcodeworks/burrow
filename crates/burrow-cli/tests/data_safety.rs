@@ -12,6 +12,12 @@
 //!   the file. Deleting the file recovers, and the next cycle is clean.
 //! - A half-written snapshot lives in a `.burrow-tmp-*` staging directory that
 //!   is never listed, never restored, and never blocks a later snapshot.
+//! - A restore interrupted between directory swaps is journaled. The next
+//!   `burrow up` or `burrow snapshot` rolls it back to the pre-restore data
+//!   instead of starting or copying a half-restored project.
+//! - A corrupt `.burrow/secrets` is never overwritten. `burrow up`, `burrow
+//!   env`, and `burrow doctor` report it, a running project keeps running, and
+//!   deleting the file is the documented recovery.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -342,4 +348,339 @@ fn half_written_snapshot_is_never_listed() {
         vec!["good", "second"],
         "both snapshots must be listed"
     );
+}
+
+fn unix_nonce() -> String {
+    let unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after the epoch")
+        .as_secs();
+    format!("{}-{unix}", std::process::id())
+}
+
+/// Simulates a crash after the staged copy replaced the live directory but
+/// before the restore journal was marked committed.
+fn interrupt_restore(project: &TestProject, snapshot: &str, nonce: &str) {
+    let data_root = project.burrow_dir().join("data");
+    let live = data_root.join("api");
+    let backup = data_root.join(format!(".burrow-backup-{nonce}-api"));
+    let staging = data_root.join(format!(".burrow-restore-{nonce}"));
+    let snapshot_record = project
+        .burrow_dir()
+        .join("snapshots")
+        .join(snapshot)
+        .join("data")
+        .join("api")
+        .join("record.txt");
+
+    fs::rename(&live, &backup).expect("move live data to backup");
+    fs::create_dir_all(&live).expect("recreate live data");
+    fs::copy(&snapshot_record, live.join("record.txt")).expect("install snapshot copy");
+    // The real restore leaves the staging root behind after renaming each
+    // staged service into place.
+    fs::create_dir_all(&staging).expect("leave restore staging root");
+
+    let journal = serde_json::json!({
+        "version": 1,
+        "nonce": nonce,
+        "snapshot": snapshot,
+        "committed": false,
+        "services": [{
+            "name": "api",
+            "present": true,
+            "had_original": true,
+        }],
+    });
+    fs::write(
+        data_root.join(".burrow-restore-journal.json"),
+        serde_json::to_vec_pretty(&journal).expect("encode journal"),
+    )
+    .expect("write restore journal");
+}
+
+#[test]
+fn an_interrupted_restore_is_rolled_back_before_services_start() {
+    let project = TestProject::new(&format!(
+        "[project]\nname = \"restorerollback\"\n\n[services.api]\n{}\n",
+        ping_run()
+    ));
+    let data = project.burrow_dir().join("data").join("api");
+    fs::create_dir_all(&data).expect("create data directory");
+    fs::write(data.join("record.txt"), "current\n").expect("write current data");
+
+    let snapshot = run_in(project.path(), &["snapshot", "good", "--json"]);
+    assert!(snapshot.status.success(), "{}", stderr(&snapshot));
+
+    // The live data changed after the snapshot was taken. An interrupted
+    // restore must bring this version back, not keep the half-installed
+    // snapshot copy.
+    fs::write(data.join("record.txt"), "pre-restore\n").expect("write pre-restore data");
+    let nonce = unix_nonce();
+    interrupt_restore(&project, "good", &nonce);
+    assert_eq!(
+        fs::read_to_string(data.join("record.txt")).expect("read live data"),
+        "current\n",
+        "the simulation must leave the snapshot copy installed"
+    );
+
+    let up = run_in(project.path(), &["up", "--detach", "--yes"]);
+    assert!(
+        up.status.success(),
+        "up failed:\nstdout:\n{}\nstderr:\n{}",
+        stdout(&up),
+        stderr(&up)
+    );
+    project.wait_until_healthy();
+
+    assert_eq!(
+        fs::read_to_string(data.join("record.txt")).expect("read recovered data"),
+        "pre-restore\n",
+        "an uncommitted restore must be rolled back before services start"
+    );
+    let data_root = project.burrow_dir().join("data");
+    assert!(
+        !data_root
+            .join(format!(".burrow-backup-{nonce}-api"))
+            .exists(),
+        "the consumed backup must be gone"
+    );
+    assert!(
+        !data_root.join(format!(".burrow-restore-{nonce}")).exists(),
+        "the staging root must be gone"
+    );
+    assert!(
+        !data_root.join(".burrow-restore-journal.json").exists(),
+        "the journal must be gone"
+    );
+
+    let daemon_log =
+        fs::read_to_string(project.burrow_dir().join("daemon.log")).expect("read daemon log");
+    assert!(
+        daemon_log.contains("recovered an interrupted restore"),
+        "daemon log was:\n{daemon_log}"
+    );
+
+    let down = run_in(project.path(), &["down"]);
+    assert!(down.status.success(), "down failed:\n{}", stderr(&down));
+}
+
+#[test]
+fn snapshot_rolls_back_an_interrupted_restore_before_copying() {
+    let project = TestProject::new(&format!(
+        "[project]\nname = \"snapshotrecovery\"\n\n[services.api]\n{}\n",
+        ping_run()
+    ));
+    let data = project.burrow_dir().join("data").join("api");
+    fs::create_dir_all(&data).expect("create data directory");
+    fs::write(data.join("record.txt"), "before\n").expect("write before data");
+
+    let snapshot = run_in(project.path(), &["snapshot", "good", "--json"]);
+    assert!(snapshot.status.success(), "{}", stderr(&snapshot));
+
+    fs::write(data.join("record.txt"), "pre-restore\n").expect("write pre-restore data");
+    let nonce = unix_nonce();
+    interrupt_restore(&project, "good", &nonce);
+
+    // `snapshot` must resolve the interrupted restore first. Otherwise the new
+    // snapshot would capture the half-restored copy and the journal would be
+    // lost.
+    let second = run_in(project.path(), &["snapshot", "after", "--json"]);
+    assert!(
+        second.status.success(),
+        "snapshot failed:\nstdout:\n{}\nstderr:\n{}",
+        stdout(&second),
+        stderr(&second)
+    );
+    assert!(
+        stderr(&second).contains("rolled back an interrupted restore"),
+        "stderr was:\n{}",
+        stderr(&second)
+    );
+    assert_eq!(
+        fs::read_to_string(data.join("record.txt")).expect("read recovered data"),
+        "pre-restore\n",
+        "the pre-restore directory must be live before the new snapshot"
+    );
+    let copied = project
+        .burrow_dir()
+        .join("snapshots")
+        .join("after")
+        .join("data")
+        .join("api")
+        .join("record.txt");
+    assert_eq!(
+        fs::read_to_string(copied).expect("read new snapshot"),
+        "pre-restore\n",
+        "the new snapshot must copy recovered data, not the half-restore"
+    );
+    assert!(!project
+        .burrow_dir()
+        .join("data")
+        .join(".burrow-restore-journal.json")
+        .exists());
+}
+
+#[test]
+fn corrupt_secrets_fail_loudly_and_leave_live_state_alone() {
+    let project = TestProject::new(&format!(
+        "[project]\nname = \"corruptsecrets\"\n\n[services.api]\n{}\n",
+        ping_run()
+    ));
+    let up = run_in(project.path(), &["up", "--detach", "--yes"]);
+    assert!(
+        up.status.success(),
+        "up failed:\nstdout:\n{}\nstderr:\n{}",
+        stdout(&up),
+        stderr(&up)
+    );
+    project.wait_until_healthy();
+
+    let secrets_path = project.burrow_dir().join("secrets");
+    assert!(secrets_path.is_file(), "up must generate .burrow/secrets");
+    let state_before: Value =
+        serde_json::from_str(&fs::read_to_string(project.state_path()).expect("read state before"))
+            .expect("parse state before");
+    let live_pid = project.state()["services"]["api"]["pid"]
+        .as_u64()
+        .expect("api pid");
+
+    // A crash mid-write leaves a readable prefix that is not valid JSON.
+    let corrupt = r#"{"version":0,"secrets":{"api":"#;
+    fs::write(&secrets_path, corrupt).expect("corrupt secrets");
+
+    // `doctor` reports the failure with a remedy but does not stop the live
+    // project or rewrite the file it could not parse.
+    let doctor = run_in(project.path(), &["doctor", "--json"]);
+    assert!(
+        !doctor.status.success(),
+        "doctor must fail when secrets are corrupt, got:\n{}",
+        stdout(&doctor)
+    );
+    let report: Value = serde_json::from_str(&stdout(&doctor)).expect("doctor JSON");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["summary"]["failures"], 1);
+    let check = report["checks"]
+        .as_array()
+        .expect("checks array")
+        .iter()
+        .find(|check| check["name"] == "secrets")
+        .expect("secrets check");
+    assert_eq!(check["status"], "fail");
+    assert!(
+        check["detail"]
+            .as_str()
+            .is_some_and(|detail| detail.contains("not valid Burrow secrets")),
+        "secrets check was: {check}"
+    );
+    assert!(
+        check["remedy"]
+            .as_str()
+            .is_some_and(|remedy| remedy.contains("delete .burrow/secrets")),
+        "secrets check was: {check}"
+    );
+
+    // The daemon refreshes resource samples in `state.json` on its own timer,
+    // so compare the identity fields rather than the whole document.
+    let state_after: Value = serde_json::from_str(
+        &fs::read_to_string(project.state_path()).expect("read state after doctor"),
+    )
+    .expect("parse state after doctor");
+    assert_eq!(
+        state_after["pid"], state_before["pid"],
+        "doctor must not replace the daemon record"
+    );
+    assert_eq!(state_after["token"], state_before["token"]);
+    assert_eq!(state_after["control_port"], state_before["control_port"]);
+    assert_eq!(state_after["ready"], state_before["ready"]);
+    assert_eq!(
+        state_after["services"]["api"]["pid"], state_before["services"]["api"]["pid"],
+        "doctor must not restart the service"
+    );
+    let status = run_in(project.path(), &["status", "--json"]);
+    assert!(
+        status.status.success(),
+        "status failed while secrets were corrupt:\n{}",
+        stderr(&status)
+    );
+    let live: Value = serde_json::from_str(&stdout(&status)).expect("status JSON");
+    assert_eq!(live["services"]["api"]["pid"], live_pid);
+    assert_eq!(live["services"]["api"]["status"], "healthy");
+    assert_eq!(
+        fs::read_to_string(&secrets_path).expect("read corrupt secrets"),
+        corrupt,
+        "doctor must not overwrite a secrets file it could not parse"
+    );
+
+    // `env` needs the secrets and must fail without replacing the file.
+    let env = run_in(project.path(), &["env"]);
+    assert!(
+        !env.status.success(),
+        "env must fail when secrets are corrupt, got:\n{}",
+        stdout(&env)
+    );
+    assert!(
+        stderr(&env).contains("is not valid Burrow secrets"),
+        "stderr was:\n{}",
+        stderr(&env)
+    );
+    assert_eq!(
+        fs::read_to_string(&secrets_path).expect("read corrupt secrets"),
+        corrupt,
+        "env must not overwrite a secrets file it could not parse"
+    );
+
+    // `down` does not need secrets and must still stop the project cleanly.
+    let down = run_in(project.path(), &["down"]);
+    assert!(down.status.success(), "down failed:\n{}", stderr(&down));
+    assert!(!project.state_path().exists());
+
+    // A fresh start cannot resolve secrets, so it fails and leaves no state.
+    let up = run_in(project.path(), &["up", "--detach", "--yes"]);
+    assert!(
+        !up.status.success(),
+        "up must fail when secrets are corrupt, got:\n{}",
+        stdout(&up)
+    );
+    let text = stderr(&up);
+    assert!(
+        text.contains("the Burrow daemon exited during startup"),
+        "stderr was:\n{text}"
+    );
+    assert!(
+        text.contains("is not valid Burrow secrets"),
+        "stderr was:\n{text}"
+    );
+    assert_eq!(
+        fs::read_to_string(&secrets_path).expect("read corrupt secrets"),
+        corrupt,
+        "a failed up must not overwrite the corrupt file"
+    );
+    assert!(
+        !project.state_path().exists(),
+        "a failed up must not leave state behind"
+    );
+
+    // The documented remedy: delete the file and let the next up regenerate it.
+    fs::remove_file(&secrets_path).expect("remove corrupt secrets");
+    let recovered = run_in(project.path(), &["up", "--detach", "--yes"]);
+    assert!(
+        recovered.status.success(),
+        "recovery up failed:\nstdout:\n{}\nstderr:\n{}",
+        stdout(&recovered),
+        stderr(&recovered)
+    );
+    project.wait_until_healthy();
+    let regenerated: Value =
+        serde_json::from_str(&fs::read_to_string(&secrets_path).expect("read regenerated secrets"))
+            .expect("regenerated secrets JSON");
+    assert!(
+        regenerated["secrets"]["api"]
+            .as_str()
+            .is_some_and(|secret| !secret.is_empty()),
+        "regenerated secrets were: {regenerated}"
+    );
+
+    let down = run_in(project.path(), &["down"]);
+    assert!(down.status.success(), "down failed:\n{}", stderr(&down));
+    assert!(!project.state_path().exists());
 }

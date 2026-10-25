@@ -160,6 +160,12 @@ burrow up
 Rotation can break a service whose data was initialized with the old
 credential. Snapshot the data first if that matters.
 
+Burrow parses the whole file before using or rewriting it. A truncated or
+invalid `.burrow/secrets` makes `burrow up` and `burrow env` fail, and `burrow
+doctor` reports the `secrets` check as a failure; the file is never silently
+overwritten. Delete it as shown above to regenerate. A project that is already
+running keeps the secrets it loaded at startup until it is restarted.
+
 ## Local state and the control token
 
 While a project runs, `.burrow/state.json` contains the daemon PID, ports, the

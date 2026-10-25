@@ -235,9 +235,12 @@ PostgreSQL's Windows build refuses to run `initdb` with an elevated
 (administrator) token. Run Burrow from a normal terminal. `burrow doctor`
 reports elevation as a warning before you start.
 
-If a previous attempt left a partial data directory, the init marker is absent
-and the next `burrow up` retries initialization. If the directory is corrupt or
-owned by another account, reset just that service:
+If a previous attempt left a partial data directory, the init marker is absent.
+The next `burrow up` moves that directory to
+`.burrow/data/.burrow-init-failed-<service>-<pid>-<unix>` and retries
+initialization from a clean directory; the partial output is preserved, not
+deleted. If the directory is corrupt or owned by another account, reset just
+that service:
 
 ```powershell
 burrow down
@@ -314,6 +317,37 @@ Other snapshot errors:
   one at a time and rolls back services already replaced. The project is left
   with either the old or the restored directory for each service, never a
   partial copy. Check free disk space and file locks first.
+- **Interrupted restore.** If the daemon or CLI was killed between directory
+  swaps, `.burrow/data/.burrow-restore-journal.json` records what to do. The
+  next `burrow up`, `snapshot`, `restore`, or `reset` rolls an uncommitted
+  restore back to the pre-restore data and prints a `note:` line. A backup
+  directory without a journal is refused, not deleted, so inspect it before
+  removing anything by hand.
+
+## `.burrow/secrets` is not valid Burrow secrets
+
+```text
+error: ...\.burrow\secrets is not valid Burrow secrets: expected value at line 1 column 1
+```
+
+The secrets file is plaintext JSON and was truncated or edited into invalid
+JSON. Burrow refuses to parse, overwrite, or guess at it. `burrow up` and
+`burrow env` fail, `burrow doctor` reports the `secrets` check as a failure, and
+a project that is already running keeps running with the secrets it loaded at
+startup. `burrow down` still works.
+
+Delete the file and start again to regenerate every generated service password:
+
+```powershell
+burrow down
+Remove-Item .burrow\secrets
+burrow up
+```
+
+Generated passwords change, so any service whose data was initialized with the
+old credential may reject the new one. Snapshot the data first if that matters;
+`burrow env` shows the new values. This is the same rotation procedure described
+in [`security.md`](security.md#secrets).
 
 ## `burrow top` refuses to start
 
