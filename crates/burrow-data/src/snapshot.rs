@@ -502,4 +502,47 @@ mod tests {
         std::fs::create_dir_all(&temp).expect("create temp");
         assert!(list_snapshots(&burrow).expect("list").is_empty());
     }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_junction_inside_a_data_directory_is_rejected() {
+        let project = tempfile::tempdir().expect("temp");
+        let burrow = project.path().join(".burrow");
+        let db = burrow.join("data").join("db");
+        std::fs::create_dir_all(&db).expect("create data");
+        std::fs::write(db.join("PG_VERSION"), "16\n").expect("write version");
+
+        let target = project.path().join("outside");
+        std::fs::create_dir_all(&target).expect("create junction target");
+        std::fs::write(target.join("secret.txt"), "outside").expect("write secret");
+        let junction = db.join("escape");
+        let link = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&junction)
+            .arg(&target)
+            .output()
+            .expect("run mklink");
+        if !link.status.success() || !junction.exists() {
+            let stderr = String::from_utf8_lossy(&link.stderr).to_lowercase();
+            let environmental = stderr.contains("denied") || stderr.contains("privilege");
+            let prefix = if environmental { "SKIPPED-ENV: " } else { "" };
+            panic!(
+                "{prefix}mklink did not create junction `{}`: status {:?}, stderr: {stderr}",
+                junction.display(),
+                link.status
+            );
+        }
+
+        let error = create_snapshot(&burrow, "suspicious", &[service("db")]).expect_err("junction");
+        let message = error.to_string();
+        assert!(message.contains("refusing to snapshot reparse point"));
+        assert!(message.contains(&junction.display().to_string()));
+
+        std::fs::remove_dir(&junction).expect("remove junction");
+        assert!(!snapshot_dir(&burrow, "suspicious").exists());
+        let leftovers = std::fs::read_dir(burrow.join("snapshots"))
+            .expect("snapshots dir")
+            .count();
+        assert_eq!(leftovers, 0);
+    }
 }
