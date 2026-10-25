@@ -61,6 +61,7 @@ impl std::error::Error for ExitStatusError {}
 pub async fn up(options: &Options, services: Vec<String>, detach: bool, yes: bool) -> Result<()> {
     let project = Project::load(options.project.clone())?;
     project::ensure_trust(&project, yes)?;
+    preflight_containers(&project, &services).await?;
 
     for (name, service) in &project.config.services {
         if service.expose {
@@ -110,9 +111,38 @@ pub async fn up(options: &Options, services: Vec<String>, detach: bool, yes: boo
     }
 }
 
+/// Verifies that `container:` services in the selection have a working engine.
+///
+/// Failing here, before anything starts, keeps the remedy visible instead of
+/// surfacing an engine error from the detached daemon.
+async fn preflight_containers(project: &Project, selected: &[String]) -> Result<()> {
+    let included = project
+        .config
+        .selected_services(selected)
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    let container_services: Vec<&str> = included
+        .iter()
+        .filter(|name| project.config.services[*name].container_image().is_some())
+        .map(String::as_str)
+        .collect();
+    if container_services.is_empty() {
+        return Ok(());
+    }
+
+    let engine = crate::container::discover().with_context(|| {
+        format!(
+            "service(s) {} use `container:` but no container engine was found
+             help: install Docker Desktop or Podman, or use a native registry package",
+            container_services.join(", ")
+        )
+    })?;
+    crate::container::engine_ready(&engine).await
+}
+
 /// Implements the hidden `__daemon` entry point.
 pub async fn daemon_entry(options: &Options, services: Vec<String>) -> Result<()> {
     let project = Project::load(options.project.clone())?;
+    preflight_containers(&project, &services).await?;
     if !project::is_trusted(&project) {
         bail!(
             "this project has not been approved\n\
@@ -571,7 +601,9 @@ fn print_status_table(state: &RuntimeState) {
     );
     println!();
 
-    let headers = ["SERVICE", "STATE", "PORT", "RAM", "CPU", "UPTIME", "URL"];
+    let headers = [
+        "SERVICE", "STATE", "RUNTIME", "PORT", "RAM", "CPU", "UPTIME", "URL",
+    ];
     let mut rows = Vec::new();
     for (name, service) in &state.services {
         let uptime = service
@@ -591,6 +623,7 @@ fn print_status_table(state: &RuntimeState) {
         rows.push([
             name.clone(),
             paint_status(service.status, color),
+            service.runtime.clone().unwrap_or_else(|| "-".to_owned()),
             service.port.to_string(),
             ram,
             cpu,
@@ -653,7 +686,7 @@ fn paint_status(status: ServiceStatus, enabled: bool) -> String {
     let code = match status {
         ServiceStatus::Healthy => "32",
         ServiceStatus::Starting | ServiceStatus::Restarting => "33",
-        ServiceStatus::Stopped => "90",
+        ServiceStatus::Stopped | ServiceStatus::Idle => "90",
         ServiceStatus::Failed => "31",
     };
     if enabled {

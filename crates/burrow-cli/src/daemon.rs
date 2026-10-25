@@ -1,18 +1,20 @@
 //! The per-project daemon: orchestration, monitoring, and the control server.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use burrow_supervisor::{
-    wait_for_health, LogRing, ManagedProcess, RestartBackoff, RestartDecision,
+    established_connections, wait_for_health, DirectoryWatcher, LogRing, ManagedProcess,
+    RestartBackoff, RestartDecision,
 };
 use futures_util::future::join_all;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
 use crate::control::{
@@ -24,6 +26,13 @@ use crate::state::{unix_now, RuntimeState, ServiceSnapshot, ServiceStatus, STATE
 const TICK: Duration = Duration::from_millis(250);
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const STATE_WRITE_INTERVAL: Duration = Duration::from_secs(1);
+/// How often idle-stop samples the connection table.
+const IDLE_SAMPLE_INTERVAL: Duration = Duration::from_secs(2);
+/// How long watch events must stay quiet before a watched service restarts.
+const WATCH_QUIESCE: Duration = Duration::from_millis(500);
+/// Upper bound on the debounce window, so a steady stream of saves still
+/// triggers a restart.
+const WATCH_MAX_DELAY: Duration = Duration::from_secs(2);
 
 enum Event {
     Health {
@@ -31,6 +40,13 @@ enum Event {
         generation: u64,
         result: std::result::Result<(), String>,
     },
+    /// A proxy request asked for an idle service to be woken.
+    WakeProxy {
+        port: u16,
+        reply: oneshot::Sender<std::result::Result<(), String>>,
+    },
+    /// A client connected to an idle service's wake listener.
+    WakeConnect { name: String, client: TcpStream },
 }
 
 struct Slot {
@@ -50,6 +66,18 @@ struct Slot {
     cpu_percent: f32,
     sample: Option<(Instant, Duration)>,
     desired: bool,
+    /// When the connection sample last saw zero connections, for idle-stop.
+    idle_since: Option<Instant>,
+    /// When the connection table was last sampled for this service.
+    idle_sampled: Option<Instant>,
+    /// First pending watch event, for debouncing.
+    watch_pending_since: Option<Instant>,
+    /// Most recent watch event, for debouncing.
+    watch_last_change: Option<Instant>,
+    /// Proxy wake requests parked until the service is healthy again.
+    wake_replies: Vec<oneshot::Sender<std::result::Result<(), String>>>,
+    /// Accept task holding the wake listener while the service is idle.
+    wake_task: Option<JoinHandle<()>>,
 }
 
 struct Daemon {
@@ -63,6 +91,15 @@ struct Daemon {
     ready: bool,
     last_state_write: Instant,
     dirty: bool,
+    event_tx: mpsc::Sender<Event>,
+    /// Marks idle ports for the proxy and sends wake requests back.
+    wake: burrow_net::proxy::ProxyWake,
+    /// Wake listener clients parked until their service is healthy.
+    wake_clients: BTreeMap<String, Vec<TcpStream>>,
+    /// Directory watcher shared by every service with `watch` paths.
+    watcher: Option<DirectoryWatcher>,
+    /// Watch roots mapped to the services that declared them.
+    watch_map: Vec<(std::path::PathBuf, String)>,
 }
 
 /// Runs the daemon until it is asked to stop or Ctrl+C is pressed.
@@ -109,6 +146,8 @@ pub async fn run(project: Project, selected: Vec<String>) -> Result<()> {
     let resolved = project::resolve(&project, &selected, &mut allocator).await?;
     allocator.save()?;
 
+    let (wake, mut wake_rx) = burrow_net::proxy::ProxyWake::new();
+
     let routes = resolved
         .services
         .values()
@@ -137,7 +176,7 @@ pub async fn run(project: Project, selected: Vec<String>) -> Result<()> {
                      anything that can reach this machine can reach its routes"
                 );
             }
-            let handle = burrow_net::proxy::start(routes, expose_proxy, port)
+            let handle = burrow_net::proxy::start(routes, expose_proxy, port, Some(wake.clone()))
                 .await
                 .with_context(|| format!("could not bind the reverse proxy on 127.0.0.1:{port}"))?;
             info!(
@@ -179,9 +218,37 @@ pub async fn run(project: Project, selected: Vec<String>) -> Result<()> {
                 cpu_percent: 0.0,
                 sample: None,
                 desired: true,
+                idle_since: None,
+                idle_sampled: None,
+                watch_pending_since: None,
+                watch_last_change: None,
+                wake_replies: Vec::new(),
+                wake_task: None,
             },
         );
     }
+
+    let mut watch_map = Vec::new();
+    let mut watch_roots = Vec::new();
+    for (name, plan) in &resolved.services {
+        for root in &plan.watch {
+            watch_map.push((root.clone(), name.clone()));
+            watch_roots.push(root.clone());
+        }
+    }
+    let watcher = if watch_roots.is_empty() {
+        None
+    } else {
+        match DirectoryWatcher::new(&watch_roots) {
+            Ok(watcher) => Some(watcher),
+            Err(error) => {
+                warn!(%error, "file watching is unavailable; services run without watch restarts");
+                None
+            }
+        }
+    };
+
+    let (event_tx, mut event_rx) = mpsc::channel::<Event>(64);
 
     let mut daemon = Daemon {
         project,
@@ -194,16 +261,20 @@ pub async fn run(project: Project, selected: Vec<String>) -> Result<()> {
         ready: false,
         last_state_write: Instant::now(),
         dirty: true,
+        event_tx: event_tx.clone(),
+        wake,
+        wake_clients: BTreeMap::new(),
+        watcher,
+        watch_map,
     };
     daemon.write_state()?;
 
     let (control_tx, mut control_rx) =
         mpsc::channel::<(ControlRequest, oneshot::Sender<ControlResponse>)>(32);
     let accept_task = tokio::spawn(accept_loop(listener, control_tx));
-    let (event_tx, mut event_rx) = mpsc::channel::<Event>(64);
 
     let result = daemon
-        .run_until_stopped(&mut control_rx, &mut event_rx, &event_tx)
+        .run_until_stopped(&mut control_rx, &mut event_rx, &mut wake_rx)
         .await;
 
     daemon.ready = false;
@@ -223,14 +294,14 @@ impl Daemon {
         &mut self,
         control_rx: &mut mpsc::Receiver<(ControlRequest, oneshot::Sender<ControlResponse>)>,
         event_rx: &mut mpsc::Receiver<Event>,
-        event_tx: &mpsc::Sender<Event>,
+        wake_rx: &mut mpsc::UnboundedReceiver<burrow_net::proxy::WakeCall>,
     ) -> Result<()> {
         info!(
             project = %self.project.config.project.name,
             services = self.slots.len(),
             "starting Burrow"
         );
-        self.start_all(event_tx).await?;
+        self.start_all(&self.event_tx.clone()).await?;
 
         self.ready = true;
         self.dirty = true;
@@ -252,7 +323,7 @@ impl Daemon {
                     break;
                 }
                 Some((request, reply)) = control_rx.recv() => {
-                    let (response, shutdown) = self.handle_control(request, event_tx).await;
+                    let (response, shutdown) = self.handle_control(request, &self.event_tx.clone()).await;
                     let _ = reply.send(response);
                     if shutdown {
                         break;
@@ -261,8 +332,15 @@ impl Daemon {
                 Some(event) = event_rx.recv() => {
                     self.handle_event(event).await;
                 }
+                Some(call) = wake_rx.recv() => {
+                    self.handle_event(Event::WakeProxy {
+                        port: call.port,
+                        reply: call.reply,
+                    })
+                    .await;
+                }
                 _ = ticker.tick() => {
-                    self.tick(event_tx).await;
+                    self.tick(&self.event_tx.clone()).await;
                     if self.last_state_write.elapsed() >= STATE_WRITE_INTERVAL {
                         self.write_state()?;
                     }
@@ -281,6 +359,7 @@ impl Daemon {
         for (index, layer) in layers.iter().enumerate() {
             debug!(layer = index, services = ?layer, "starting layer");
             self.initialize_packages(layer).await?;
+            self.prepare_containers(layer).await;
             let spawns = layer.iter().map(|name| {
                 let slot = &self.slots[name];
                 let mut spec = slot.plan.spec.clone();
@@ -399,6 +478,8 @@ impl Daemon {
 
     async fn tick(&mut self, event_tx: &mpsc::Sender<Event>) {
         let mut to_restart = Vec::new();
+        let mut to_idle_stop = Vec::new();
+        let mut to_watch_restart = Vec::new();
 
         for (name, slot) in &mut self.slots {
             if let Some(process) = &slot.process {
@@ -440,8 +521,131 @@ impl Daemon {
             }
         }
 
+        // Idle-stop samples the system connection table only for healthy,
+        // running services of a fully started project.
+        if self.ready {
+            let now = Instant::now();
+            for (name, slot) in &mut self.slots {
+                let Some(idle_after) = slot.plan.idle_stop else {
+                    continue;
+                };
+                if slot.status != ServiceStatus::Healthy || slot.process.is_none() {
+                    slot.idle_since = None;
+                    slot.idle_sampled = None;
+                    continue;
+                }
+                if slot
+                    .idle_sampled
+                    .is_some_and(|sampled| sampled.elapsed() < IDLE_SAMPLE_INTERVAL)
+                {
+                    continue;
+                }
+                slot.idle_sampled = Some(now);
+                match established_connections(slot.plan.port) {
+                    Ok(count) if count > 0 => slot.idle_since = None,
+                    Ok(_) => {
+                        let since = *slot.idle_since.get_or_insert(now);
+                        if now.saturating_duration_since(since) >= idle_after {
+                            to_idle_stop.push(name.clone());
+                        }
+                    }
+                    Err(error) => {
+                        debug!(service = %name, %error, "connection sample failed")
+                    }
+                }
+            }
+        }
+
+        // File watching: map fresh events to services, then debounce.
+        if let Some(watcher) = &self.watcher {
+            let events = watcher.poll();
+            if !events.is_empty() {
+                let now = Instant::now();
+                let mut touched = BTreeSet::new();
+                for event in events {
+                    if is_ignored_watch_path(&event.relative) {
+                        continue;
+                    }
+                    for (root, name) in &self.watch_map {
+                        if &event.root == root {
+                            touched.insert(name.clone());
+                        }
+                    }
+                }
+                for name in touched {
+                    if let Some(slot) = self.slots.get_mut(&name) {
+                        slot.watch_pending_since.get_or_insert(now);
+                        slot.watch_last_change = Some(now);
+                    }
+                }
+            }
+        }
+        let now = Instant::now();
+        let mut to_rearm = Vec::new();
+        for (name, slot) in &self.slots {
+            if slot.watch_pending_since.is_none() {
+                continue;
+            }
+            let (Some(pending_since), Some(last_change)) =
+                (slot.watch_pending_since, slot.watch_last_change)
+            else {
+                continue;
+            };
+            let quiet = now.saturating_duration_since(last_change) >= WATCH_QUIESCE;
+            let expired = now.saturating_duration_since(pending_since) >= WATCH_MAX_DELAY;
+            if !quiet && !expired {
+                continue;
+            }
+            let restartable = matches!(slot.status, ServiceStatus::Healthy | ServiceStatus::Idle)
+                || (slot.status == ServiceStatus::Stopped && slot.desired);
+            if restartable {
+                to_watch_restart.push(name.clone());
+            } else {
+                // A service mid-restart re-arms its debounce window.
+                to_rearm.push(name.clone());
+            }
+        }
+        for name in to_rearm {
+            if let Some(slot) = self.slots.get_mut(&name) {
+                slot.watch_pending_since = Some(Instant::now());
+            }
+        }
+
         for name in to_restart {
             self.restart(&name, event_tx).await;
+        }
+        for name in to_idle_stop {
+            self.idle_stop_service(&name).await;
+        }
+        for name in to_watch_restart {
+            if let Some(slot) = self.slots.get_mut(&name) {
+                slot.watch_pending_since = None;
+                slot.watch_last_change = None;
+            }
+            self.restart_for_watch(&name, event_tx).await;
+        }
+
+        // Wake requests parked on a service that can no longer start get a
+        // definitive failure instead of waiting out the proxy timeout.
+        let failed_wakes: Vec<(String, String)> = self
+            .slots
+            .iter()
+            .filter(|(_, slot)| {
+                !slot.wake_replies.is_empty()
+                    && matches!(slot.status, ServiceStatus::Failed | ServiceStatus::Stopped)
+                    && slot.wake_task.is_none()
+            })
+            .map(|(name, slot)| {
+                (
+                    name.clone(),
+                    slot.last_error
+                        .clone()
+                        .unwrap_or_else(|| "the service is not running".to_owned()),
+                )
+            })
+            .collect();
+        for (name, message) in failed_wakes {
+            self.fail_wake(&name, message);
         }
 
         self.sample_metrics();
@@ -481,19 +685,34 @@ impl Daemon {
     }
 
     async fn restart(&mut self, name: &str, event_tx: &mpsc::Sender<Event>) {
-        let Some(slot) = self.slots.get_mut(name) else {
-            return;
-        };
-        if slot.process.is_some() {
+        if !self.slots.contains_key(name) {
             return;
         }
-        slot.generation = slot.generation.wrapping_add(1);
-        slot.status = ServiceStatus::Starting;
-        slot.restart_at = None;
-        slot.exit_code = None;
-        slot.restarts = slot.restarts.saturating_add(1);
-        slot.desired = true;
+        {
+            let slot = self.slots.get_mut(name).expect("slot checked above");
+            if slot.process.is_some() {
+                return;
+            }
+            // The wake listener must release the port before the service can
+            // bind it again.
+            if let Some(task) = slot.wake_task.take() {
+                task.abort();
+            }
+            slot.generation = slot.generation.wrapping_add(1);
+            slot.status = ServiceStatus::Starting;
+            slot.restart_at = None;
+            slot.exit_code = None;
+            slot.restarts = slot.restarts.saturating_add(1);
+            slot.desired = true;
+        }
+        let port = self.slots[name].plan.port;
+        self.wake.mark_running(port);
+        if self.slots[name].plan.container.is_some() {
+            let layer = [name.to_owned()];
+            self.prepare_containers(&layer).await;
+        }
 
+        let slot = self.slots.get_mut(name).expect("slot checked above");
         let mut spec = slot.plan.spec.clone();
         spec.log_ring = Some(Arc::clone(&slot.logs));
         let mut seed_now = false;
@@ -541,6 +760,8 @@ impl Daemon {
                     Self::schedule_restart(slot, Duration::ZERO, format!("{error}"));
                 }
                 self.dirty = true;
+            } else {
+                self.flush_wake(name);
             }
         }
     }
@@ -595,6 +816,74 @@ impl Daemon {
                         Self::schedule_restart(slot, Duration::ZERO, format!("{error}"));
                     }
                     self.dirty = true;
+                } else {
+                    self.flush_wake(&name);
+                }
+            }
+            Event::WakeProxy { port, reply } => {
+                let Some(name) = self
+                    .slots
+                    .iter()
+                    .find(|(_, slot)| slot.plan.port == port)
+                    .map(|(name, _)| name.clone())
+                else {
+                    let _ = reply.send(Err(format!("no service owns port {port}")));
+                    return;
+                };
+                let slot = &self.slots[&name];
+                match slot.status {
+                    ServiceStatus::Healthy if slot.process.is_some() => {
+                        self.wake.mark_running(port);
+                        let _ = reply.send(Ok(()));
+                    }
+                    ServiceStatus::Starting | ServiceStatus::Restarting => {
+                        self.slots
+                            .get_mut(&name)
+                            .expect("slot exists")
+                            .wake_replies
+                            .push(reply);
+                    }
+                    ServiceStatus::Idle | ServiceStatus::Stopped if slot.desired => {
+                        info!(service = %name, "waking idle service for a proxied request");
+                        self.slots
+                            .get_mut(&name)
+                            .expect("slot exists")
+                            .wake_replies
+                            .push(reply);
+                        self.wake_service(&name).await;
+                    }
+                    _ => {
+                        let _ = reply.send(Err(format!(
+                            "service `{name}` is not running (status: {})",
+                            slot.status.label()
+                        )));
+                    }
+                }
+            }
+            Event::WakeConnect { name, client } => {
+                let Some(slot) = self.slots.get(&name) else {
+                    return;
+                };
+                match slot.status {
+                    ServiceStatus::Healthy if slot.process.is_some() => {
+                        let port = slot.plan.port;
+                        tokio::spawn(pump_wake_client(client, port));
+                    }
+                    ServiceStatus::Starting | ServiceStatus::Restarting => {
+                        self.wake_clients.entry(name).or_default().push(client);
+                    }
+                    ServiceStatus::Idle | ServiceStatus::Stopped if slot.desired => {
+                        info!(service = %name, "waking idle service for a new connection");
+                        self.wake_clients
+                            .entry(name.clone())
+                            .or_default()
+                            .push(client);
+                        self.wake_service(&name).await;
+                    }
+                    _ => {
+                        // Not desired: the connection is closed by dropping it.
+                        warn!(service = %name, "wake connection for a stopped service was closed");
+                    }
                 }
             }
         }
@@ -693,24 +982,49 @@ impl Daemon {
     }
 
     async fn stop_slot(&mut self, name: &str) -> Result<()> {
-        let Some(slot) = self.slots.get_mut(name) else {
+        if !self.slots.contains_key(name) {
             return Ok(());
-        };
-        slot.desired = false;
-        slot.generation = slot.generation.wrapping_add(1);
-        slot.restart_at = None;
-        let stop = slot
+        }
+        let port = self.slots[name].plan.port;
+        {
+            let slot = self.slots.get_mut(name).expect("slot checked above");
+            slot.desired = false;
+            slot.generation = slot.generation.wrapping_add(1);
+            slot.restart_at = None;
+            slot.idle_since = None;
+            slot.idle_sampled = None;
+            slot.watch_pending_since = None;
+            slot.watch_last_change = None;
+            // A stopped service must not hold its port through a wake listener.
+            if let Some(task) = slot.wake_task.take() {
+                task.abort();
+            }
+        }
+        self.wake.mark_running(port);
+        self.stop_process(name).await?;
+        let slot = self.slots.get_mut(name).expect("slot checked above");
+        slot.status = ServiceStatus::Stopped;
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// Stops the process tree without changing desired state or status.
+    ///
+    /// Registry stop commands (for example `pg_ctl stop -m fast`) are what make
+    /// databases flush cleanly; containers are stopped through the engine so
+    /// `--rm` can clean up. Both run before terminating the job.
+    async fn stop_process(&mut self, name: &str) -> Result<()> {
+        let package_stop = self.slots[name]
             .plan
             .package
             .as_ref()
             .and_then(|package| package.stop.clone());
-        let has_process = slot.process.is_some();
+        let container = self.slots[name].plan.container.clone();
+        let grace = self.slots[name].plan.spec.grace_period;
+        let has_process = self.slots[name].process.is_some();
 
-        // Registry stop commands (for example `pg_ctl stop -m fast`) are what
-        // make databases flush cleanly. Running them before terminating the job
-        // avoids an unclean shutdown every time the project stops.
         if has_process {
-            if let Some(command) = stop {
+            if let Some(command) = package_stop {
                 if let Err(error) = self.run_package_step(name, &command, "stop").await {
                     warn!(
                         service = name,
@@ -719,23 +1033,181 @@ impl Daemon {
                     );
                 }
             }
-        }
+            if let Some(container) = container {
+                let args = crate::container::stop_args(&container.container_name, grace.as_secs());
+                info!(service = name, container = %container.container_name, "stopping container");
+                match tokio::process::Command::new(&container.program)
+                    .args(&args)
+                    .stdin(Stdio::null())
+                    .output()
+                    .await
+                {
+                    Ok(output) if output.status.success() => {}
+                    Ok(output) => warn!(
+                        service = name,
+                        code = output.status.code(),
+                        "container stop command failed; terminating the engine client"
+                    ),
+                    Err(error) => {
+                        warn!(service = name, %error, "could not run the container stop command")
+                    }
+                }
+            }
 
-        let slot = self.slots.get_mut(name).expect("slot checked above");
-        if let Some(mut process) = slot.process.take() {
-            process
-                .shutdown(None)
-                .await
-                .with_context(|| format!("could not stop service `{name}` cleanly"))?;
+            let slot = self.slots.get_mut(name).expect("slot checked above");
+            if let Some(mut process) = slot.process.take() {
+                process
+                    .shutdown(None)
+                    .await
+                    .with_context(|| format!("could not stop service `{name}` cleanly"))?;
+            }
+            let slot = self.slots.get_mut(name).expect("slot checked above");
+            slot.started = None;
+            slot.started_wall = None;
+            slot.memory_bytes = 0;
+            slot.cpu_percent = 0.0;
+            slot.sample = None;
         }
-        slot.status = ServiceStatus::Stopped;
-        slot.started = None;
-        slot.started_wall = None;
-        slot.memory_bytes = 0;
-        slot.cpu_percent = 0.0;
-        slot.sample = None;
-        self.dirty = true;
         Ok(())
+    }
+
+    /// Idle-stops a service: graceful stop, then hold its port with a wake
+    /// listener so the next connection restarts it.
+    async fn idle_stop_service(&mut self, name: &str) {
+        let port = self.slots[name].plan.port;
+        if let Err(error) = self.stop_process(name).await {
+            warn!(service = name, %error, "idle stop failed; retrying on a later tick");
+            if let Some(slot) = self.slots.get_mut(name) {
+                slot.idle_since = Some(Instant::now());
+            }
+            return;
+        }
+        {
+            let slot = self.slots.get_mut(name).expect("slot checked above");
+            slot.status = ServiceStatus::Idle;
+            slot.desired = true;
+            slot.idle_since = None;
+            slot.idle_sampled = None;
+        }
+        self.wake.mark_idle(port);
+        info!(
+            service = name,
+            port, "service idle; stopped until the next connection"
+        );
+        match TcpListener::bind(("127.0.0.1", port)).await {
+            Ok(listener) => {
+                let task = spawn_wake_listener(listener, name.to_owned(), self.event_tx.clone());
+                if let Some(slot) = self.slots.get_mut(name) {
+                    slot.wake_task = Some(task);
+                }
+            }
+            Err(error) => {
+                warn!(
+                    service = name,
+                    %error,
+                    "could not bind the wake listener; the service stays idle without automatic wake-up"
+                );
+            }
+        }
+        self.dirty = true;
+        self.write_state().ok();
+    }
+
+    /// Restarts an idle (or stopped-but-desired) service on demand.
+    async fn wake_service(&mut self, name: &str) {
+        if let Some(slot) = self.slots.get_mut(name) {
+            if let Some(task) = slot.wake_task.take() {
+                task.abort();
+            }
+            // Waking is deliberate, so it is not throttled by crash backoff.
+            slot.backoff.reset();
+            slot.desired = true;
+        }
+        let port = self.slots[name].plan.port;
+        self.wake.mark_running(port);
+        let event_tx = self.event_tx.clone();
+        self.restart(name, &event_tx).await;
+    }
+
+    /// Answers parked wake requests and pumps parked clients for a service
+    /// that just became healthy.
+    fn flush_wake(&mut self, name: &str) {
+        let Some(slot) = self.slots.get_mut(name) else {
+            return;
+        };
+        let port = slot.plan.port;
+        let replies = std::mem::take(&mut slot.wake_replies);
+        self.wake.mark_running(port);
+        for reply in replies {
+            let _ = reply.send(Ok(()));
+        }
+        if let Some(clients) = self.wake_clients.remove(name) {
+            for client in clients {
+                tokio::spawn(pump_wake_client(client, port));
+            }
+        }
+    }
+
+    /// Fails parked wake requests after the service gave up starting.
+    fn fail_wake(&mut self, name: &str, message: String) {
+        let Some(slot) = self.slots.get_mut(name) else {
+            return;
+        };
+        let replies = std::mem::take(&mut slot.wake_replies);
+        for reply in replies {
+            let _ = reply.send(Err(message.clone()));
+        }
+        self.wake_clients.remove(name);
+    }
+
+    /// Restarts only the watched service; dependents are left alone.
+    async fn restart_for_watch(&mut self, name: &str, event_tx: &mpsc::Sender<Event>) {
+        info!(
+            service = name,
+            "watched paths changed; restarting the service"
+        );
+        if self
+            .slots
+            .get(name)
+            .is_some_and(|slot| slot.process.is_some())
+        {
+            if let Err(error) = self.stop_process(name).await {
+                warn!(
+                    service = name,
+                    %error,
+                    "could not stop the service before a watch restart"
+                );
+                return;
+            }
+        }
+        self.restart(name, event_tx).await;
+        self.dirty = true;
+    }
+
+    /// Removes containers left over by a crashed daemon, best effort.
+    async fn prepare_containers(&self, layer: &[String]) {
+        for name in layer {
+            let Some(plan) = self.slots[name].plan.container.clone() else {
+                continue;
+            };
+            let args = crate::container::remove_args(&plan.container_name);
+            match tokio::process::Command::new(&plan.program)
+                .args(&args)
+                .stdin(Stdio::null())
+                .output()
+                .await
+            {
+                Ok(output) => {
+                    debug!(
+                        service = name,
+                        container = %plan.container_name,
+                        code = output.status.code(),
+                        "cleared any leftover container"
+                    );
+                }
+                Err(error) => warn!(service = name, %error, "could not clear a leftover container"),
+            }
+        }
     }
 
     /// Runs the registry `init` commands once per data directory.
@@ -927,6 +1399,17 @@ impl Daemon {
                         memory_bytes: slot.memory_bytes,
                         cpu_percent: slot.cpu_percent,
                         last_error: slot.last_error.clone(),
+                        runtime: slot
+                            .plan
+                            .package
+                            .as_ref()
+                            .map(|package| package.key.clone())
+                            .or_else(|| {
+                                slot.plan
+                                    .container
+                                    .as_ref()
+                                    .map(|container| format!("container:{}", container.image))
+                            }),
                     },
                 )
             })
@@ -975,6 +1458,63 @@ fn spawn_health_check(
             })
             .await;
     });
+}
+
+/// Holds an idle service's port until the first connection wakes the service.
+///
+/// The listener is dropped as soon as one client arrives, which releases the
+/// port so the real service can bind it again. That client is handed to the
+/// daemon, which parks it until the service is healthy and then pumps bytes
+/// between it and the service.
+fn spawn_wake_listener(
+    listener: TcpListener,
+    name: String,
+    event_tx: mpsc::Sender<Event>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        match listener.accept().await {
+            Ok((client, _)) => {
+                drop(listener);
+                let _ = event_tx.send(Event::WakeConnect { name, client }).await;
+            }
+            Err(error) => warn!(%error, "wake listener failed; the port is now free"),
+        }
+    })
+}
+
+/// Bridges one wake-listener client to the freshly started service.
+async fn pump_wake_client(mut client: TcpStream, port: u16) {
+    let address = ("127.0.0.1", port);
+    let mut upstream = None;
+    for attempt in 0..10 {
+        match TcpStream::connect(address).await {
+            Ok(stream) => {
+                upstream = Some(stream);
+                break;
+            }
+            Err(_) if attempt < 9 => tokio::time::sleep(Duration::from_millis(200)).await,
+            Err(_) => break,
+        }
+    }
+    let Some(mut upstream) = upstream else {
+        warn!(port, "a wake client could not reach the woken service");
+        return;
+    };
+    if let Err(error) = tokio::io::copy_bidirectional(&mut client, &mut upstream).await {
+        debug!(port, %error, "wake client tunnel ended");
+    }
+}
+
+/// Watch events under Burrow's own state directory and `.git` never restart a
+/// service: the first would loop forever (logs and data live there), the
+/// second fires constantly while version control runs in the background.
+fn is_ignored_watch_path(relative: &std::path::Path) -> bool {
+    relative.components().any(|component| {
+        matches!(
+            component.as_os_str().to_str(),
+            Some(".burrow") | Some(".git")
+        )
+    })
 }
 
 async fn accept_loop(

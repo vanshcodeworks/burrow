@@ -30,6 +30,8 @@ pub enum ServiceStatus {
     Restarting,
     /// Stopped deliberately, or exited without a restart policy.
     Stopped,
+    /// Stopped by idle-stop; it wakes on the next connection.
+    Idle,
     /// Gave up after repeated failures.
     Failed,
 }
@@ -42,6 +44,7 @@ impl ServiceStatus {
             Self::Healthy => "healthy",
             Self::Restarting => "restarting",
             Self::Stopped => "stopped",
+            Self::Idle => "idle",
             Self::Failed => "failed",
         }
     }
@@ -75,6 +78,11 @@ pub struct ServiceSnapshot {
     pub cpu_percent: f32,
     /// Last actionable error, if the service failed or is restarting.
     pub last_error: Option<String>,
+    /// How the service runs: a registry key such as `postgres@16`, a
+    /// container reference such as `container:redis:7`, or `None` for a
+    /// plain `run` command.
+    #[serde(default)]
+    pub runtime: Option<String>,
 }
 
 /// The complete state document.

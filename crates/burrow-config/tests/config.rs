@@ -124,6 +124,109 @@ DEBUG = "1"
 }
 
 #[test]
+fn container_references_are_validated() {
+    let config = parse(
+        r#"
+[project]
+name = "shop"
+[services.cache]
+use = "container:redis:7-alpine"
+"#,
+    )
+    .expect("container references are valid");
+    assert_eq!(
+        config.services["cache"].container_image(),
+        Some("redis:7-alpine")
+    );
+    assert!(!config.services["cache"].is_registry());
+    assert!(config.validate().is_ok());
+
+    for bad in ["container:", "container:re dis"] {
+        let error = parse(&format!(
+            r#"
+[project]
+name = "shop"
+[services.cache]
+use = "{bad}"
+"#
+        ))
+        .expect_err("must fail");
+        assert!(error.to_string().contains("container"), "{error}");
+    }
+}
+
+#[test]
+fn container_port_and_seed_are_rejected_on_non_container_services() {
+    let error = parse(
+        r#"
+[project]
+name = "shop"
+[services.cache]
+run = "cache.exe"
+container_port = 6379
+"#,
+    )
+    .expect_err("must fail");
+    assert!(error.to_string().contains("container_port"), "{error}");
+
+    let error = parse(
+        r#"
+[project]
+name = "shop"
+[services.cache]
+use = "container:redis:7"
+seed = "cache/seed.sql"
+"#,
+    )
+    .expect_err("must fail");
+    assert!(error.to_string().contains("seed"), "{error}");
+}
+
+#[test]
+fn watch_paths_stay_inside_the_project() {
+    let config = parse(
+        r#"
+[project]
+name = "shop"
+[services.api]
+run = "api.exe"
+watch = ["api/src"]
+"#,
+    )
+    .expect("relative watch paths are valid");
+    assert_eq!(config.services["api"].watch, vec!["api/src"]);
+
+    for bad in ["../outside", "C:/elsewhere"] {
+        let error = parse(&format!(
+            r#"
+[project]
+name = "shop"
+[services.api]
+run = "api.exe"
+watch = ["{bad}"]
+"#
+        ))
+        .expect_err("must fail");
+        assert!(error.to_string().contains("watch"), "{error}");
+    }
+}
+
+#[test]
+fn idle_stop_requires_a_positive_duration() {
+    let error = parse(
+        r#"
+[project]
+name = "shop"
+[services.api]
+run = "api.exe"
+idle_stop = "0s"
+"#,
+    )
+    .expect_err("must fail");
+    assert!(error.to_string().contains("idle_stop"), "{error}");
+}
+
+#[test]
 fn parses_ports_health_and_limits() {
     let config = parse(
         r#"

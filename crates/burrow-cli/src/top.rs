@@ -311,6 +311,7 @@ mod tests {
                     memory_bytes: 48 * 1024 * 1024,
                     cpu_percent: 1.5,
                     last_error: None,
+                    runtime: None,
                 },
             )]),
         }

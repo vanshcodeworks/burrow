@@ -16,8 +16,8 @@ mod template;
 pub use error::ConfigError;
 pub use graph::StartupPlan;
 pub use model::{
-    parse_byte_size, parse_cpu_percent, Config, HealthConfig, HealthKind, PortConfig, Project,
-    RestartPolicy, Service,
+    parse_byte_size, parse_cpu_percent, parse_duration, Config, HealthConfig, HealthKind,
+    PortConfig, Project, RestartPolicy, Service,
 };
 pub use template::{resolve_templates, ServiceVars, TemplateContext};
 

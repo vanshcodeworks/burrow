@@ -10,6 +10,7 @@ use tracing_subscriber::EnvFilter;
 
 mod commandline;
 mod commands;
+mod container;
 mod control;
 mod daemon;
 mod doctor;

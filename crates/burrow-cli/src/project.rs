@@ -1,7 +1,7 @@
 //! Project discovery, trust approval, secrets, and runtime planning.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -147,6 +147,28 @@ pub struct ServicePlan {
     pub env: BTreeMap<OsString, OsString>,
     /// Managed package runtime, when this service uses `use = "..."`.
     pub package: Option<PackagePlan>,
+    /// Container fallback runtime, when this service uses
+    /// `use = "container:IMAGE"`.
+    pub container: Option<ContainerPlan>,
+    /// Parsed `idle_stop`, when configured.
+    pub idle_stop: Option<std::time::Duration>,
+    /// Resolved watch roots, when `watch` is configured.
+    pub watch: Vec<PathBuf>,
+}
+
+/// A container service delegated to Docker or Podman.
+#[derive(Clone)]
+pub struct ContainerPlan {
+    /// Engine executable, for example `docker.exe`.
+    pub program: PathBuf,
+    /// Engine display name, for example `docker`.
+    pub engine: String,
+    /// Image reference from `use = "container:IMAGE"`.
+    pub image: String,
+    /// Name given to the container, `burrow-<project>-<service>`.
+    pub container_name: String,
+    /// Port the image listens on inside the container.
+    pub container_port: u16,
 }
 
 /// A registry command with every placeholder already substituted.
@@ -310,6 +332,11 @@ pub fn ensure_trust(project: &Project, yes: bool) -> Result<()> {
     for (name, service) in &project.config.services {
         if let Some(command) = &service.run {
             eprintln!("  {name}: {command}");
+        } else if let Some(image) = service.container_image() {
+            eprintln!(
+                "  {name}: run container image `{image}` through Docker or Podman \
+                 (installed separately; the image is pulled by the engine)"
+            );
         } else if let Some(reference) = &service.use_spec {
             eprintln!("  {name}: download and run `{reference}` from the Burrow registry");
         }
@@ -430,6 +457,11 @@ async fn install_packages(
         let Some(reference) = service.use_spec.as_deref() else {
             continue;
         };
+        if service.container_image().is_some() {
+            // Container services are delegated to an engine, not resolved
+            // through the package registry.
+            continue;
+        }
         let resolved = registry
             .resolve(reference)
             .map_err(|error| anyhow::anyhow!("service `{name}` uses `{reference}`: {error}"))?;
@@ -479,6 +511,9 @@ pub fn record_package_refs(project: &Project) -> Result<()> {
         let Some(reference) = &service.use_spec else {
             continue;
         };
+        if service.container_image().is_some() {
+            continue;
+        }
         let resolved = registry
             .resolve(reference)
             .map_err(|error| anyhow::anyhow!("{error}"))?;
@@ -907,6 +942,11 @@ fn build_service(
         })
         .transpose()?;
 
+    let container_plan = service
+        .container_image()
+        .map(|image| build_container_plan(project, name, image, port, service))
+        .transpose()?;
+
     let (program, args, command_display) = if let Some(command) = &service.run {
         let (program, args) = commandline::split(command)
             .with_context(|| format!("could not parse services.{name}.run"))?;
@@ -915,6 +955,21 @@ fn build_service(
             args.into_iter().map(OsString::from).collect(),
             command.clone(),
         )
+    } else if let Some(plan) = &container_plan {
+        let container_env = container_environment(service, &env);
+        let memory = service
+            .memory_bytes()
+            .map_err(|error| anyhow::anyhow!("{error}"))?;
+        let args = crate::container::run_args(
+            &plan.container_name,
+            &plan.image,
+            port,
+            plan.container_port,
+            &container_env,
+            memory,
+        );
+        let display = format!("{} run {} {}", plan.engine, plan.container_name, plan.image);
+        (plan.program.clone(), args, display)
     } else if let Some(package) = package {
         let vars = package_vars(project, name, port, password, None);
         let run = prepare_command(package, &package.run, &vars, password, require_binaries)?;
@@ -993,6 +1048,27 @@ fn build_service(
         spec.cpu_limit_percent = Some(percent);
     }
 
+    let idle_stop = service
+        .idle_stop
+        .as_deref()
+        .map(|raw| {
+            burrow_config::parse_duration(raw, &format!("services.{name}.idle_stop"))
+                .map_err(|error| anyhow::anyhow!("{error}"))
+        })
+        .transpose()?;
+
+    let mut watch = Vec::with_capacity(service.watch.len());
+    for entry in &service.watch {
+        let path = project.dir.join(entry);
+        if !path.is_dir() {
+            bail!(
+                "service `{name}` watches `{}` but that directory does not exist",
+                entry
+            );
+        }
+        watch.push(path);
+    }
+
     Ok(ServicePlan {
         name: name.to_owned(),
         spec,
@@ -1006,7 +1082,60 @@ fn build_service(
         cwd,
         env,
         package: package_plan,
+        container: container_plan,
+        idle_stop,
+        watch,
     })
+}
+
+/// Builds the delegated runtime for a `use = "container:IMAGE"` service.
+fn build_container_plan(
+    project: &Project,
+    name: &str,
+    image: &str,
+    port: u16,
+    service: &Service,
+) -> Result<ContainerPlan> {
+    let engine = crate::container::discover().with_context(|| {
+        format!(
+            "service `{name}` uses `container:{image}` but no container engine was found\n\
+             help: install Docker Desktop or Podman, or use a native registry package"
+        )
+    })?;
+    Ok(ContainerPlan {
+        program: engine.program,
+        engine: engine.display,
+        image: image.to_owned(),
+        container_name: crate::container::container_name(&project.config.project.name, name),
+        container_port: service.container_port.unwrap_or(port),
+    })
+}
+
+/// Picks the environment variables that make sense inside a container.
+///
+/// Host-specific values (`PATH`, project and data directory paths) are
+/// excluded; user-configured `env` entries plus the port and identity
+/// variables are passed with `-e`.
+fn container_environment(
+    service: &Service,
+    env: &BTreeMap<OsString, OsString>,
+) -> BTreeMap<String, String> {
+    let mut selected = BTreeMap::new();
+    for key in [
+        "PORT",
+        "HOST",
+        "BURROW_SERVICE",
+        "BURROW_PROJECT",
+        "BURROW_SERVICE_PASSWORD",
+    ] {
+        if let Some(value) = env.get(OsStr::new(key)) {
+            selected.insert(key.to_owned(), value.to_string_lossy().into_owned());
+        }
+    }
+    for (key, value) in &service.env {
+        selected.insert(key.clone(), value.clone());
+    }
+    selected
 }
 
 /// Returns the services that must be stopped/started around `name`, in

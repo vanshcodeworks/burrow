@@ -133,6 +133,7 @@ pub async fn run(options: &Options) -> Result<()> {
         ports_check(project, live_state.as_ref(), &mut checks);
         commands_check(project, &mut checks);
         proxy_check(project, live_state.as_ref(), &mut checks);
+        container_check(project, &mut checks).await;
     }
 
     let summary = Summary {
@@ -440,6 +441,55 @@ fn missing_generated_secrets<'a>(
         })
         .cloned()
         .collect()
+}
+
+/// Checks that `container:` services have a working engine behind them.
+///
+/// No check is added when the project uses no container services.
+async fn container_check(project: &Project, checks: &mut Vec<Check>) {
+    let references: Vec<&str> = project
+        .config
+        .services
+        .values()
+        .filter_map(|service| service.container_image())
+        .collect();
+    if references.is_empty() {
+        return;
+    }
+
+    let Some(engine) = crate::container::discover() else {
+        checks.push(
+            Check::new(
+                "container",
+                CheckStatus::Fail,
+                format!(
+                    "{} service(s) use `container:` but no container engine was found",
+                    references.len()
+                ),
+            )
+            .with_remedy(
+                "install Docker Desktop or Podman, or replace the `use` entry with a native                  registry package",
+            ),
+        );
+        return;
+    };
+
+    match crate::container::engine_ready(&engine).await {
+        Ok(()) => checks.push(Check::new(
+            "container",
+            CheckStatus::Ok,
+            format!(
+                "{} container service(s) run through `{}`",
+                references.len(),
+                engine.display
+            ),
+        )),
+        Err(error) => checks.push(
+            Check::new("container", CheckStatus::Fail, format!("{error:#}")).with_remedy(
+                "start the engine (Docker Desktop or `podman machine start`), then rerun                  `burrow doctor`",
+            ),
+        ),
+    }
 }
 
 fn secrets_check(project: &Project, checks: &mut Vec<Check>) {

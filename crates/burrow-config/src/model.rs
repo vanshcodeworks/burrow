@@ -75,12 +75,18 @@ pub struct Service {
     /// Bind non-loopback interfaces for this service. Off by default.
     #[serde(default)]
     pub expose: bool,
-    /// Phase-2 idle stop duration. Parsed and accepted in v1.
+    /// Phase-2 idle stop duration. The service stops after this much time
+    /// without connections and wakes on the next one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idle_stop: Option<String>,
-    /// Phase-2 watch paths. Parsed and accepted in v1.
+    /// Phase-2 watch paths, relative to the project directory. The service
+    /// restarts when files under these roots change.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub watch: Vec<String>,
+    /// Port the container image listens on inside the container. Only valid
+    /// with `use = "container:..."`; defaults to the service's own port.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container_port: Option<u16>,
 }
 
 /// Port selection for a service.
@@ -290,6 +296,30 @@ impl Config {
             if let Some(reference) = &service.use_spec {
                 validate_registry_reference(&format!("{path}.use"), reference)?;
             }
+            if let Some(port) = service.container_port {
+                if port == 0 {
+                    return Err(ConfigError::invalid(
+                        format!("{path}.container_port"),
+                        "port must be between 1 and 65535",
+                    ));
+                }
+                if service.container_image().is_none() {
+                    return Err(ConfigError::invalid(
+                        format!("{path}.container_port"),
+                        "`container_port` is only valid with `use = \"container:IMAGE\"`",
+                    ));
+                }
+            }
+            if service.seed.is_some() && service.container_image().is_some() {
+                return Err(ConfigError::invalid(
+                    format!("{path}.seed"),
+                    "container services do not support seed scripts; \
+                     use a native registry package for seeded data",
+                ));
+            }
+            for entry in &service.watch {
+                validate_relative_entry(&format!("{path}.watch"), Path::new(entry), "watch paths")?;
+            }
             if let Some(command) = &service.run {
                 if command.trim().is_empty() {
                     return Err(ConfigError::invalid(
@@ -472,7 +502,14 @@ impl Service {
 
     /// Whether this service comes from the registry.
     pub fn is_registry(&self) -> bool {
-        self.use_spec.is_some()
+        self.use_spec.is_some() && self.container_image().is_none()
+    }
+
+    /// The container image reference when `use` is `container:IMAGE`.
+    pub fn container_image(&self) -> Option<&str> {
+        self.use_spec
+            .as_deref()
+            .and_then(|reference| reference.strip_prefix("container:"))
     }
 }
 
@@ -561,8 +598,21 @@ fn validate_identifier(path: &str, value: &str) -> Result<(), ConfigError> {
 }
 
 fn validate_registry_reference(path: &str, reference: &str) -> Result<(), ConfigError> {
+    if let Some(image) = reference.strip_prefix("container:") {
+        if image.trim().is_empty() || image.chars().any(char::is_whitespace) {
+            return Err(ConfigError::invalid(
+                path,
+                "`container:` needs an image reference, for example `container:redis:7`",
+            ));
+        }
+        return Ok(());
+    }
+
     let (name, version) = reference.split_once('@').ok_or_else(|| {
-        ConfigError::invalid(path, "expected `name@version`, for example `postgres@16`")
+        ConfigError::invalid(
+            path,
+            "expected `name@version` or `container:image`, for example `postgres@16`",
+        )
     })?;
     validate_identifier(path, name)?;
     if version.trim().is_empty()
@@ -605,19 +655,23 @@ fn validate_route(path: &str, route: &str) -> Result<(), ConfigError> {
 }
 
 fn validate_relative_script(path: &str, script: &Path) -> Result<(), ConfigError> {
-    if script.is_absolute() {
+    validate_relative_entry(path, script, "seed scripts")
+}
+
+fn validate_relative_entry(path: &str, value: &Path, what: &str) -> Result<(), ConfigError> {
+    if value.is_absolute() {
         return Err(ConfigError::invalid(
             path,
-            "seed scripts must be relative to the project directory",
+            format!("{what} must be relative to the project directory"),
         ));
     }
-    if script
+    if value
         .components()
         .any(|component| matches!(component, Component::ParentDir | Component::RootDir))
     {
         return Err(ConfigError::invalid(
             path,
-            "seed scripts must not traverse outside the project directory",
+            format!("{what} must not traverse outside the project directory"),
         ));
     }
     Ok(())
