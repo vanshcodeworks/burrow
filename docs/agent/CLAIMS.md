@@ -132,6 +132,15 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | Only Docker Compose was run; the rest of the comparison is documentation-based | The method statement says one benchmark was run; Docker Desktop 24.0.7 + Compose v2.23.3-desktop.2 produced `docs/benchmarks/2026-10-25-stacks.json`. Podman and the other tools were not run | observed (scope limit) |
 | The FAQ points readers at the comparison, not at `benchmarks.md` | `docs/faq.md` "Is Burrow a Docker replacement?" links `comparisons/README.md`, `benchmarks.md`, and `security.md` | verified by inspection |
 
+## Phase 3-5 launch-kit claims (cycle 17)
+
+| Claim | Evidence | Status |
+| --- | --- | --- |
+| Launch copy uses only measured or documented product claims | `docs/launch/announcement.md` cites 1.84-1.88 s, 1.92-3.20 s, 4.11 s vs 10.7 s, and 10.9-11.0 MB vs 37.2-62.1 MB, with the benchmark caveats; the only unresolved source is `TODO(human)`; no release URL, version, or hash is claimed | verified by review |
+| Launch copy does not claim unverified platform or release support | Short and long drafts say Windows 11 x86-64 is verified and Windows 10/ARM64/clean-machine/signed artifacts are not; Show HN says Windows 11 today (Windows 10 unverified); the checklist makes the clean-machine pass and CI probe a gate | verified by review |
+| Screenshots are planned but not committed | `docs/launch/screenshots.md` says no screenshots are committed; capture is a human action with a shot list, 120x30 terminal requirement, and a secret/personal-data check | verified (no images present) |
+| The demo uses the current measured numbers and current `doctor` output | `docs/demo.md` shows 11 ok including `listeners`, the `RUNTIME` column, 1.84-1.88 s, and 10.9-11.0 MB; the status and doctor blocks came from a live release-binary run | verified (one live run; PIDs, ports, and log text are representative) |
+
 ## Gaps found by this audit (queued)
 
 1. ~~A2.5 secrets-scanning test~~ **closed**: `tests/secrets.rs` scans

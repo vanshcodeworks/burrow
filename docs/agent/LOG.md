@@ -826,3 +826,64 @@ no clean-machine, Windows 10, ARM64, or CI run.
 signing plan, winget/Scoop drafts, E2), then launch-kit drafts. Do not write
 `LAUNCH_READINESS.md` until the Phase 1 blockers and human-only launch steps are
 resolved.
+
+## 2026-10-26 - cycle 17: launch kit, screenshot plan, and demo refresh
+
+**Task**: Finish the launch-kit drafts, add a screenshot plan, and make the demo
+script match the current measured output before starting packaging work.
+
+**What changed**:
+
+- Added `docs/launch/README.md`, `docs/launch/announcement.md`,
+  `docs/launch/checklist.md`, and `docs/launch/screenshots.md`. The kit is
+  explicitly draft-only and lists the human-only actions.
+- The announcement has short, long, and Show HN copy. It uses only measured or
+  documented claims: 1.84-1.88 s Burrow warm, 1.92-3.20 s Compose warm, 4.11 s
+  vs 10.7 s cold data, 10.9-11.0 MB daemon vs 37.2-62.1 MB containers with the
+  not-like-for-like caveat. The unpublished repository URL is a single
+  `TODO(human)`.
+- The screenshot plan lists six shots, exact commands, a 120x30 non-elevated
+  Windows 11 setup, a neutral checkout path, capture order, alt text, and a
+  verification checklist for secrets and personal paths. No screenshots are
+  committed; capture is a human action.
+- Updated `docs/demo.md` from a live release-binary run: the `status` block has
+  the `RUNTIME` column, `doctor` shows 11 ok including `listeners`, and the
+  closing figures are 1.84-1.88 s and 10.9-11.0 MB. PIDs, ports, and log text
+  remain representative.
+- Corrected a broken `troubleshooting.md` anchor in the demo. Removed the Show
+  HN phrase that implied Windows 10 support; it now says Windows 11 today and
+  Windows 10 unverified. Added the warm-package-cache caveat to the Compose
+  startup comparison so the setup boundary is explicit.
+- Updated `QUEUE.md`, `CLAIMS.md`, and `NEEDS_HUMAN.md`; rewrote `STATE.md`.
+
+**Verification**:
+
+- A Node link checker resolved every local Markdown link and anchor in
+  `docs/launch/` and `docs/demo.md`: **23 links, 0 missing**.
+- `git diff --check`: clean (line-ending warnings only).
+- The raw benchmark JSON was not changed in this cycle; it still parses.
+
+**Commands and real results**:
+
+- `cargo fmt --all --check` - green.
+- `cargo clippy --workspace --all-targets -- -D warnings` - green.
+- `cargo test --workspace --all-targets -- --test-threads=1` -
+  **211 passed, 0 failed across 23 suites**.
+- `cargo audit` - green, 3 allowed transitive warnings (`paste` unmaintained;
+  `lru` unsound x2).
+- `cargo build --workspace --release` - green in 0.46 s (no Rust changes;
+  cached artifacts).
+- `cargo-deny` remains absent; `cargo audit` is the dependency gate.
+
+**Cleanup**: docs-only cycle; no stack, Docker, temp directories, or processes
+were created. Docker Desktop remains stopped from the cycle-15 cleanup.
+
+**Not verified**: no screenshots were captured; no clean-machine, Windows 10,
+ARM64, standard-user, OneDrive/UNC, FAT/exFAT, antivirus, `LongPathsEnabled=0`,
+8.3-disabled, Podman, or CI run. The launch copy has not been reviewed by a
+human, and nothing was published, tagged, signed, or posted.
+
+**Next**: packaging/trust/docs-site work (release dry-run zip/checksums, a
+cargo-deny decision, signing plan, winget/Scoop drafts after a human release,
+E2). Do not write `LAUNCH_READINESS.md` until the Phase 1 blockers and
+human-only launch steps are resolved.

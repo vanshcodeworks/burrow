@@ -41,8 +41,12 @@
       (D6), cargo-deny config (D1), signing plan, winget/Scoop manifests with
       real hashes after a human release, and the docs site (E2). A human
       publishes.
-- [ ] **Launch kit drafts**: announcement copy, demo script, screenshots, and a
-      launch checklist. Drafts only; a human posts.
+- [x] **Launch kit drafts**: `docs/launch/README.md`, `announcement.md`,
+      `checklist.md`, and `screenshots.md`, plus the updated `docs/demo.md`.
+      Announcement copy uses only measured or documented claims and keeps a
+      `TODO(human)` for the unpublished repository URL. The screenshot plan is
+      complete, but the actual capture is a human action tracked in
+      `NEEDS_HUMAN.md`. Drafts only; a human posts.
 
 ## Tier A - verification and hardening
 

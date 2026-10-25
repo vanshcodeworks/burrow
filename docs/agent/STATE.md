@@ -2,29 +2,38 @@
 
 ## Current focus
 
-Phase 3-5 launch content is underway. The sourced landscape/comparisons page and
-the reproducible Docker Compose head-to-head are complete and have had a skeptic
-review. Next are packaging, trust, and docs-site work (release dry-run,
-cargo-deny/SBOM, signing plan, winget/Scoop drafts, E2), then launch-kit drafts.
-Phase 1 still needs a true clean-machine pass and a CI execution of the
-compatibility probe. Do not write `docs/agent/LAUNCH_READINESS.md` until those
-and the human-only launch steps are resolved.
+Phase 3-5 launch content is drafted: the sourced comparison, the reproducible
+Docker Compose head-to-head, the demo script, and the launch kit are in place.
+The launch kit is for human review only; no screenshots are committed and
+nothing has been published. Next is packaging, trust, and docs-site work
+(release dry-run zip/checksums, a cargo-deny decision, signing plan,
+winget/Scoop manifests after a human release, E2). Phase 1 still needs a true
+clean-machine pass and a CI execution of the compatibility probe. Do not write
+`docs/agent/LAUNCH_READINESS.md` until those and the human-only launch steps are
+resolved.
 
-## Last cycle summary (2026-10-26, cycle 16)
+## Last cycle summary (2026-10-26, cycle 17)
 
-- **Skeptic review**: re-read the cycle-15 benchmark claims and corrected three
-  overclaims. The 2.67 s API build is a **warm-cache rebuild**, not a cold build:
-  removing the image does not clear Docker's build-layer cache (the earlier full
-  build was 26.53 s). Compose ran before Burrow with Docker Desktop's VM still
-  running, so measurement order is a possible bias. Burrow's `initdb` uses
-  `-A trust --no-locale` while the Compose image uses its default locale and
-  password auth.
-- **Date clarity**: the run timestamp is `2026-10-25T22:34:13Z`, which is
-  2026-10-26 locally (`en-NZ`). Prose now says **2026-10-25 UTC**.
-- **No numbers changed**: the raw JSON is unchanged; the corrections are
-  disclosure and interpretation. No re-measurement was needed.
-- **No process/temp work**: Docker Desktop remains stopped from the cycle-15
-  cleanup; this was a docs/script-only cycle.
+- **Launch kit completed as drafts**: `docs/launch/README.md` indexes the kit and
+  states the human-only boundary; `announcement.md` has short, long, and Show HN
+  copy; `checklist.md` covers readiness, release, package managers, launch, and
+  post-launch verification; `screenshots.md` has a six-shot plan, capture
+  commands, terminal requirements, and a secret/personal-data check.
+- **Screenshot plan, not screenshots**: no images are committed. Capture needs a
+  clean, non-elevated Windows 11 machine, a neutral checkout path, a 120x30
+  terminal, and a human visual review. The checklist and `NEEDS_HUMAN.md` mark
+  this as a human action.
+- **Demo updated from a live release-binary run**: `docs/demo.md` now shows the
+  `RUNTIME` column in `status`, 11 `doctor` checks including `listeners`, and
+  the 1.84-1.88 s / 10.9-11.0 MB figures. PIDs, ports, and log text remain
+  representative.
+- **Claims fixes**: corrected a broken `troubleshooting.md` anchor; removed the
+  Show HN line that implied Windows 10 support (it now says Windows 11 today,
+  Windows 10 unverified); added the warm-package-cache caveat next to the
+  Compose startup comparison.
+- **Verification**: all local Markdown links and anchors in `docs/launch/` and
+  `docs/demo.md` resolve; `git diff --check` is clean; the raw benchmark JSON is
+  unchanged and valid.
 
 ## Benchmark state (2026-10-25 UTC)
 
@@ -45,7 +54,7 @@ and the human-only launch steps are resolved.
   `docs/benchmarks/2026-10-25-stacks.json`; method and caveats:
   `docs/benchmarks.md`.
 
-## Check suite status (cycle 16 full run)
+## Check suite status (cycle 17 full run)
 
 - `cargo fmt --all --check`: **green**.
 - `cargo clippy --workspace --all-targets -- -D warnings`: **green**.
@@ -53,10 +62,10 @@ and the human-only launch steps are resolved.
   211 tests / 23 suites**.
 - `cargo audit`: **green** (3 allowed transitive warnings: `paste`
   unmaintained; `lru` unsound x2).
-- `cargo build --workspace --release`: **green in 11.45 s** (no Rust changes;
-  recompiled despite cached artifacts).
-- `scripts/benchmark-stacks.ps1` parses cleanly; all Markdown links,
-  `[S1]`-`[S16]` anchors, and the raw JSON validate.
+- `cargo build --workspace --release`: **green in 0.46 s** (no Rust changes;
+  cached artifacts).
+- Local Markdown links/anchors in `docs/launch/` and `docs/demo.md` validate;
+  `git diff --check` is clean.
 - `cargo-deny` is still not installed; `cargo audit` is the dependency gate.
 - Fuzz targets are excluded from the workspace; see `fuzz/README.md`.
 
@@ -100,3 +109,7 @@ Compose was run, on one Windows 11 machine with a small sample. Compose
 container memory excludes Docker Desktop's VM and daemon. A cold API image build
 was not measured, and measurement order is not randomized. Competitor docs can
 change; the source ledger must be updated with the claim.
+
+Launch assets are drafts: no screenshots are committed, no release exists, and
+every `TODO(human)` placeholder is unresolved. Do not treat the launch kit as a
+published announcement.
