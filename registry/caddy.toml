@@ -1,0 +1,33 @@
+# Caddy web server, run as a static file server over the service data dir.
+#
+# The archive is the official windows_amd64 zip published on the Caddy GitHub
+# releases page. The SHA-256 and size below were computed locally from that
+# exact download; the download URL is the same file the release page links to.
+schema = 1
+name = "caddy"
+description = "Caddy web server as a static file server"
+license = "Apache-2.0"
+upstream = "https://caddyserver.com/"
+source = "https://github.com/caddyserver/caddy/releases"
+
+[versions."2.11.7"]
+# Serves .burrow/data/<service> with a directory listing, so snapshots and
+# restores cover the served files.
+run = { program = "caddy", args = [
+  "file-server",
+  "--listen", "{{host}}:{{port}}",
+  "--root", "{{data_dir}}",
+  "--browse",
+] }
+url_template = "http://{{host}}:{{port}}"
+health = { http = "/" }
+default_port = 8080
+
+[versions."2.11.7".platforms.windows-x86_64]
+url = "https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_windows_amd64.zip"
+sha256 = "0a1edc0b799512051c57071ce0e798d3f2cf67dc98171366f1d2b326072e3b06"
+size = 18479498
+archive = "zip"
+
+[versions."2.11.7".platforms.windows-x86_64.binaries]
+caddy = "caddy.exe"

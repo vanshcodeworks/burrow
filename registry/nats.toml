@@ -1,0 +1,32 @@
+# NATS messaging server, built by the NATS team.
+#
+# The archive is the official windows-amd64 zip published on the nats-server
+# GitHub releases page. The SHA-256 and size below were computed locally from
+# that exact download; the download URL is the same file the release page
+# links to.
+schema = 1
+name = "nats"
+description = "NATS messaging server"
+license = "Apache-2.0"
+upstream = "https://nats.io/"
+source = "https://github.com/nats-io/nats-server/releases"
+
+[versions."2.15.1"]
+# `-a 127.0.0.1` keeps the server on loopback; the monitoring port stays off.
+run = { program = "nats-server", args = [
+  "-a", "127.0.0.1",
+  "-p", "{{port}}",
+  "-sd", "{{data_dir}}",
+] }
+url_template = "nats://{{host}}:{{port}}"
+health = { tcp = true }
+default_port = 4222
+
+[versions."2.15.1".platforms.windows-x86_64]
+url = "https://github.com/nats-io/nats-server/releases/download/v2.15.1/nats-server-v2.15.1-windows-amd64.zip"
+sha256 = "4f7edfa376750b2720463bd22766ed469a5f13f378a643097866fcd953cbf7e3"
+size = 7484670
+archive = "zip"
+
+[versions."2.15.1".platforms.windows-x86_64.binaries]
+nats-server = "nats-server-v2.15.1-windows-amd64/nats-server.exe"
