@@ -8,13 +8,13 @@
   not run remotely. Windows 10, ARM64, a true standard-user account,
   OneDrive/UNC, FAT/exFAT, corporate antivirus, `LongPathsEnabled=0`, and
   8.3-disabled volumes remain unverified.
-- **Podman parity and a Docker Compose head-to-head benchmark**: Docker Desktop
-  is installed but Podman is absent, and the Docker daemon was not running for
-  the recorded benchmark. A human with both engines can run a like-for-like
-  comparison; skip and document any comparator that is unavailable.
-- **Review before publishing**: the sourced comparison and any launch drafts
-  should be reviewed by a human for accuracy and tone before they are posted.
-  The comparison deliberately makes no competitor performance claims.
+- **Podman parity**: Podman is absent here, so the optional container fallback
+  is verified with Docker only. A human with Podman can run the same fixture and
+  compare flag behavior; skip and document any comparator that is unavailable.
+- **Review before publishing**: the sourced comparison, benchmark page, and any
+  launch drafts should be reviewed by a human for accuracy and tone before they
+  are posted. Only Docker Compose has a measured performance number; the other
+  competitor statements remain documentation-based.
 
 Local `cargo-audit` 0.22.2 is installed and working; the earlier note about a
 failed local install is obsolete.

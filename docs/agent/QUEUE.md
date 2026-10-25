@@ -30,12 +30,13 @@
       VS Code Dev Containers, WinSW, and NSSM. Every competitor claim maps to an
       official source with a 2026-10-26 retrieval date in `SOURCES.md`; each
       section states where the alternative is better. Linked from the README and
-      FAQ. No competitor was run or benchmarked.
-- [ ] **Reproducible benchmark suite vs Docker Compose where available**
-      (tracked as E3 below): the existing benchmark has no Docker number because
-      the daemon was not running. Start Docker Desktop, run the same example
-      with recorded machine specs and raw output, and skip any comparator that
-      is unavailable. Do not infer a number.
+      FAQ. Docker Compose was measured separately; the other tools were not run.
+- [x] **Reproducible benchmark suite vs Docker Compose where available**
+      (tracked as E3 below): `scripts/benchmark-stacks.ps1` measured both stacks
+      on 2026-10-25 with the same example and `/api/todos` endpoint, recorded
+      machine specs and raw data in `docs/benchmarks/2026-10-25-stacks.json`,
+      and reports image pull/build separately. Podman remains unavailable and is
+      documented as unverified.
 - [ ] **Packaging, trust, and docs site**: release dry-run zip/checksums/SBOM
       (D6), cargo-deny config (D1), signing plan, winget/Scoop manifests with
       real hashes after a human release, and the docs site (E2). A human
@@ -168,10 +169,10 @@
 
 - [ ] E1 Examples with smoke tests (Next.js+Postgres, FastAPI+Postgres+Mailpit).
 - [ ] E2 Docs site (mdBook) — defer until content settles.
-- [ ] E3 (Phase 3-5) Benchmark suite vs docker compose where available; the
-      recorded benchmark has no Docker number because the daemon was not
-      running. Record machine specs and raw data, or state why a comparator is
-      unavailable.
+- [x] E3 (Phase 3-5) Benchmark suite vs Docker Compose: `scripts/benchmark-stacks.ps1`
+      measured both stacks on 2026-10-25; raw JSON is
+      `docs/benchmarks/2026-10-25-stacks.json`. Podman remains unavailable and
+      is stated as unverified rather than inferred.
 - [ ] E5 CLI/TUI polish: plain mode audit, narrow terminals.
 
 ## Done (this run)

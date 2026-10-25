@@ -688,3 +688,89 @@ available (record machine specs and raw data; skip unavailable comparators),
 then packaging/trust/docs-site work and launch-kit drafts. Do not write
 `LAUNCH_READINESS.md` until the Phase 1 blockers and human-only launch steps are
 resolved.
+
+## 2026-10-26 - cycle 15: reproducible Docker Compose head-to-head
+
+**Task**: Measure the queued Docker Compose comparison, make it reproducible, and
+replace the "no Docker number" claims with real data.
+
+**Method**: Started Docker Desktop 24.0.7 (server 24.0.7, Compose
+v2.23.3-desktop.2, WSL 2 kernel 6.18.54.1-microsoft-standard-WSL2, 16 CPUs,
+7.469 GiB). Added `scripts/benchmark-stacks.ps1`, which:
+
+- generates a Compose fixture in a temp directory from
+  `examples/node-postgres`, using the same `server.js`, schema, and seed;
+- pins PostgreSQL `16.15-alpine` and Node `22.13.1-alpine`, health-gates the API
+  on `depends_on: condition: service_healthy`, and uses the same `/api/todos`
+  endpoint;
+- copies the Burrow project to a temp directory and measures
+  `burrow up --detach --yes` with a warm package cache;
+- measures startup as wall-clock time from launching each stack until
+  `/api/todos` returns HTTP 200 with the seeded row, polling every 100 ms;
+- treats cold as empty application data (empty Compose volume, no `.burrow`
+  data) with warm package/image caches, and warm as retained data;
+- measures image pull/build separately, excludes it from startup, and cleans up
+  containers, volumes, and temp roots in `finally`; a missing daemon skips the
+  Compose half rather than inventing a number.
+
+The only app change is `HOST=0.0.0.0` inside the container so Docker can forward
+the port; the native example binds loopback. The final clean run removed the
+benchmark images first so the pull/build setup times were real.
+
+**Results** (2026-10-25T22:34:13Z, raw data in
+`docs/benchmarks/2026-10-25-stacks.json`):
+
+| Scenario | Burrow to HTTP 200 | Compose to HTTP 200 |
+| --- | ---: | ---: |
+| Cold application data | 10.7 s | 4.11 s |
+| Warm 1 | 1.87 s | 3.20 s |
+| Warm 2 | 1.88 s | 1.92 s |
+| Warm 3 | 1.84 s | 2.08 s |
+
+Burrow warm range **1.84-1.88 s** (median 1.87 s); Compose **1.92-3.20 s**
+(median 2.08 s). Burrow daemon working set **10.9-11.0 MB**; whole tree
+**171.5-172.2 MB**. Compose containers **37.2-62.1 MB combined**. Compose image
+pull **21.57 s**, API build **2.67 s**. PostgreSQL digest
+`sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36`;
+API image 159,806,724 bytes. Compose was faster on empty application data;
+Burrow was slightly faster and more consistent warm. Container memory is not
+like-for-like because it excludes Docker Desktop's VM and daemon.
+
+**Public docs**: added the head-to-head section, method, and caveats to
+`docs/benchmarks.md`; updated the README benchmark paragraph and fair-comparison
+table with measured Compose figures; updated the comparison page's performance
+table and resource fairness note. The README headline remains the factual
+native-services statement; no unsupported "fraction of the resources" claim was
+restored.
+
+**Agent docs**: closed E3 and the Phase 3-5 benchmark item in `QUEUE.md`;
+updated the M6 and Phase 3-5 rows in `CLAIMS.md`; removed the Docker head-to-head
+from `NEEDS_HUMAN.md`, leaving Podman parity; rewrote `STATE.md`.
+
+**Commands and real results**:
+
+- `cargo fmt --all --check` - green.
+- `cargo clippy --workspace --all-targets -- -D warnings` - green.
+- `cargo test --workspace --all-targets -- --test-threads=1` -
+  **211 passed, 0 failed across 23 suites**.
+- `cargo audit` - green, 3 allowed transitive warnings (`paste` unmaintained;
+  `lru` unsound x2).
+- `cargo build --workspace --release` - green in 0.62 s (no Rust changes;
+  cached artifacts).
+- `cargo-deny` remains absent; `cargo audit` is the dependency gate.
+
+**Cleanup**: removed `postgres:16.15-alpine` and the generated
+`burrow-bench-40648-api` image; confirmed no benchmark containers or volumes;
+removed the three benchmark temp directories; stopped Docker Desktop and its
+`docker-desktop` / `docker-desktop-data` WSL distros. Confirmed no `burrow`
+processes and port 3000 free.
+
+**Not verified**: one Windows 11 Home machine and a small sample, not a
+statistical distribution. Only Docker Compose was run; Podman and every other
+competitor remain documentation-based. Compose container memory excludes Docker
+Desktop's VM and daemon. No clean-machine, Windows 10, ARM64, or CI run.
+
+**Next**: packaging/trust/docs-site work (release dry-run, cargo-deny/SBOM,
+signing plan, winget/Scoop drafts, E2), then launch-kit drafts. Do not write
+`LAUNCH_READINESS.md` until the Phase 1 blockers and human-only launch steps are
+resolved.
