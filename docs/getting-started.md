@@ -1,10 +1,10 @@
 # Getting started
 
-Burrow runs a full local development stack as native Windows processes. One
-`burrow.toml` describes the services; `burrow up` allocates ports, downloads and
-verifies managed packages, starts services in dependency order, waits for health
-checks, and streams their logs. There is no Docker daemon, VM, or WSL
-distribution in the loop.
+By default, Burrow runs a full local development stack as native Windows
+processes. One `burrow.toml` describes the services; `burrow up` allocates ports,
+downloads and verifies managed packages, starts services in dependency order,
+waits for health checks, and streams their logs. For those native services there
+is no Docker daemon, VM, or WSL distribution in the loop.
 
 ## Requirements
 

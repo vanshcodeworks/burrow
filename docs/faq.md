@@ -14,8 +14,9 @@ For projects whose services have trustworthy native Windows builds, it removes
 the container layer: no Docker daemon, no VM, no WSL distribution, and no image
 builds. It is not a drop-in replacement in general. Containers provide
 filesystem and network isolation, reproducible base images, and Linux binaries;
-Burrow provides none of those. See the fair comparison in
-[`benchmarks.md`](benchmarks.md) and the limitations in
+Burrow provides none of those. See the sourced
+[comparison with other tools](comparisons/README.md), the measured
+[benchmarks](benchmarks.md), and the limitations in
 [`security.md`](security.md).
 
 ## Does Burrow work on Linux or macOS?

@@ -1,11 +1,10 @@
 # Burrow
 
-**Docker Compose's reproducibility, at a fraction of the resources, native on
-Windows.**
+**Native Windows local development stacks — no Docker daemon or VM by default.**
 
 Burrow is a Windows-native local development environment manager written in
 Rust. You describe a full-stack project in one `burrow.toml`, and `burrow up`
-starts every service as a native Windows process: no Docker daemon, virtual
+starts native services as Windows child processes: no Docker daemon, virtual
 machine, or WSL distribution in the loop. Burrow allocates stable ports,
 downloads and verifies managed packages, generates environment variables and
 passwords, waits for health checks, captures logs, and shows a live dashboard.
@@ -140,6 +139,14 @@ and Linux userspace. Burrow provides none of those. Read
 [`docs/security.md`](docs/security.md) before deciding whether that trade-off is
 appropriate for a project.
 
+A fuller, sourced comparison with Docker Compose, Podman Compose, Process
+Compose, Overmind, VS Code Dev Containers, WinSW, and NSSM is in
+[`docs/comparisons/README.md`](docs/comparisons/README.md). It states where each
+alternative is the better fit. Competitor facts come from official documentation
+retrieved 2026-10-26; the source ledger is
+[`docs/comparisons/SOURCES.md`](docs/comparisons/SOURCES.md). No competitor was
+benchmarked.
+
 ## What works now
 
 - One `burrow.toml` with strict validation, local overrides, template expansion,
@@ -240,6 +247,7 @@ network access you have. The full trust model is in
 
 - [Getting started](docs/getting-started.md)
 - [Compatibility](docs/compatibility.md)
+- [Comparison with other tools](docs/comparisons/README.md)
 - [CLI reference](docs/cli.md)
 - [Configuration reference](docs/config-reference.md) and [JSON Schema](docs/burrow.schema.json)
 - [Registry guide](docs/registry.md)
