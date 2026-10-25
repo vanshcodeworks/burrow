@@ -70,6 +70,14 @@ pub fn resolve_templates(
     Ok(())
 }
 
+/// Expands one template string with `context`.
+///
+/// [`resolve_templates`] calls this for each field; it is public so fuzz
+/// targets and tests can exercise the parser without building a full config.
+pub fn render_template(input: &str, context: &TemplateContext) -> Result<String, ConfigError> {
+    render(input, context, "template")
+}
+
 fn render(input: &str, context: &TemplateContext, path: &str) -> Result<String, ConfigError> {
     let mut output = String::with_capacity(input.len());
     let mut remaining = input;

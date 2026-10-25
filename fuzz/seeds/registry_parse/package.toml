@@ -1,0 +1,11 @@
+schema = 1
+name = "fuzzpkg"
+description = "Fuzz seed package"
+license = "MIT"
+upstream = "https://example.com/"
+source = "https://example.com/download"
+
+[versions."1.0"]
+default_port = 8080
+run = { program = "server", args = ["--port", "{{port}}"] }
+health = { tcp = true }

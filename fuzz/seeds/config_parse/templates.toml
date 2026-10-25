@@ -1,0 +1,12 @@
+[project]
+name = "shop"
+
+[services.db]
+use = "postgres@16"
+port = 5432
+env = { DATABASE_URL = "postgres://burrow:{{db.password}}@{{db.host}}:{{db.port}}/app" }
+
+[services.api]
+run = "node server.js"
+needs = ["db"]
+env = { PORT = "{{api.port}}", PUBLIC_URL = "{{project.dir}}" }

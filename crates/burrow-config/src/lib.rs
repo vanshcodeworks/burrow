@@ -19,7 +19,7 @@ pub use model::{
     is_reserved_windows_name, parse_byte_size, parse_cpu_percent, parse_duration, Config,
     HealthConfig, HealthKind, PortConfig, Project, RestartPolicy, Service,
 };
-pub use template::{resolve_templates, ServiceVars, TemplateContext};
+pub use template::{render_template, resolve_templates, ServiceVars, TemplateContext};
 
 use std::path::Path;
 

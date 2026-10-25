@@ -49,9 +49,13 @@
         proves the `.part` file offset, the `Range` request, the completed
         hash-checked package, and removal of the partial file
         (`cache.rs::an_interrupted_download_resumes_from_the_part_file`).
-- [ ] **A3 Fuzzing**: cargo-fuzz targets for config parser, template engine,
-      registry parser, extractor path logic, state.json parser. Needs a fuzz
-      crate (does not ship in the workspace build).
+- [x] **A3 Fuzzing**: the excluded `fuzz/` crate has five cargo-fuzz targets:
+      config parser, template renderer, registry parser, extractor path
+      validation, and `state.json` parser. Five 30 s campaigns on
+      Windows/MSVC with AddressSanitizer ran **1,350,504 executions** with no
+      crash, timeout, or artifact. Seeds are committed in `fuzz/seeds/`;
+      prerequisites (nightly, `cargo-fuzz`, the Windows ASan DLL) and the
+      target table are in `fuzz/README.md`.
 - [ ] **A4 Property tests**: port allocator stability/collision-freedom,
       atomic dir ops, template resolution (extend existing proptest suite).
 - [ ] **A5 Compatibility matrix doc**: Win10/11, non-ASCII paths, long paths,

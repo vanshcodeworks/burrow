@@ -16,7 +16,8 @@ mod daemon;
 mod doctor;
 mod init;
 mod project;
-mod state;
+// The state parser is also exposed as a library so fuzz targets can call it.
+use burrow_cli::state;
 mod top;
 mod win;
 

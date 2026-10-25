@@ -134,6 +134,14 @@ impl RuntimeState {
         Ok(())
     }
 
+    /// Parses a state document from JSON text.
+    ///
+    /// The binary and fuzz targets both use this; [`Self::read`] adds the file
+    /// path and the recovery hint to the error.
+    pub fn parse(contents: &str) -> std::result::Result<Self, serde_json::Error> {
+        serde_json::from_str(contents)
+    }
+
     /// Reads the state document, if it exists.
     pub fn read(project_dir: &Path) -> Result<Option<Self>> {
         let path = Self::path(project_dir);
@@ -144,7 +152,7 @@ impl RuntimeState {
                 return Err(error).with_context(|| format!("could not read {}", path.display()))
             }
         };
-        let state: Self = serde_json::from_str(&contents).with_context(|| {
+        let state: Self = Self::parse(&contents).with_context(|| {
             format!(
                 "{} is not valid Burrow state\nhelp: if no Burrow daemon is running, delete the file and try again",
                 path.display()
@@ -215,5 +223,46 @@ pub fn format_bytes(bytes: u64) -> String {
         format!("{bytes} B")
     } else {
         format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RuntimeState;
+
+    const VALID: &str = r#"{
+        "version": 1,
+        "project": "shop",
+        "project_dir": "C:\\shop",
+        "pid": 1234,
+        "token": "secret",
+        "control_port": 49152,
+        "started_at": 1700000000,
+        "config_hash": "abc123",
+        "ready": true,
+        "services": {
+            "db": {
+                "status": "healthy",
+                "pid": 4321,
+                "port": 5432,
+                "url": "postgres://127.0.0.1:5432",
+                "route": null,
+                "restarts": 0,
+                "started_at": 1700000001,
+                "exit_code": null,
+                "memory_bytes": 1048576,
+                "cpu_percent": 0.5,
+                "last_error": null
+            }
+        }
+    }"#;
+
+    #[test]
+    fn state_parser_accepts_a_complete_document_and_rejects_bad_fields() {
+        let state = RuntimeState::parse(VALID).expect("valid state");
+        assert_eq!(state.project, "shop");
+        assert_eq!(state.services["db"].port, 5432);
+        assert!(RuntimeState::parse(r#"{"version":1}"#).is_err());
+        assert!(RuntimeState::parse(&VALID.replace("\"healthy\"", "\"unknown\"")).is_err());
     }
 }

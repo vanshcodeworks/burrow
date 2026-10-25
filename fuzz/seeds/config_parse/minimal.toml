@@ -1,0 +1,10 @@
+[project]
+name = "shop"
+
+[services.db]
+run = "db.exe"
+
+[services.api]
+run = "api.exe"
+needs = ["db"]
+port = 3000

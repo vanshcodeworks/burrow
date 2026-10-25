@@ -9,6 +9,7 @@ members = [
     "crates/burrow-supervisor",
     "crates/burrow-tui",
 ]
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.0"

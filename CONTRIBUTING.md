@@ -32,6 +32,13 @@ automatically for `cargo test -p burrow-supervisor` (and for the workspace test
 run). The `--test-threads=1` setting is required because tests that exercise
 console control events must not run concurrently.
 
+## Fuzzing
+
+The fuzz targets in [`fuzz/`](fuzz/) are not part of the workspace build. They
+need a nightly toolchain and `cargo-fuzz`; see [`fuzz/README.md`](fuzz/README.md)
+for the target list, the Windows ASan setup, and the corpus layout. Format them
+with `cargo fmt --manifest-path fuzz/Cargo.toml`.
+
 ## Commit style
 
 Use Conventional Commits, with one logical change per commit:

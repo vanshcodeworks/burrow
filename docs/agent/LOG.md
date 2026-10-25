@@ -273,3 +273,57 @@ before any path is built.
 
 **Next**: A3 fuzzing, A4 property tests, A6 `doctor --report`, then the Phase 1
 compatibility matrix and clean-machine pass.
+
+## 2026-10-26 - cycle 9: parser fuzzing (A3)
+
+**Task**: Add coverage-guided fuzzing for the parsers that read user and
+attacker-controlled files.
+
+**Outcome**: Five cargo-fuzz targets run under AddressSanitizer with no crash,
+timeout, or artifact. The fuzz crate is excluded from the workspace, so normal
+builds and tests are unchanged.
+
+**Commands and real results**:
+
+- `rustup toolchain install nightly --profile minimal` - installed
+  `1.101.0-nightly (12433c307 2026-10-24)`.
+- `cargo install cargo-fuzz --locked` - installed `cargo-fuzz 0.13.2`.
+- `cargo +nightly fuzz run config_parse -- -max_total_time=30 -print_final_stats=1 fuzz/seeds/config_parse`
+  - **96,105 executions**, 0 crashes, 0 artifacts, peak RSS 449 MB.
+- `cargo +nightly fuzz run config_template ...` - **294,395 executions**, 0
+  crashes, peak RSS 507 MB.
+- `cargo +nightly fuzz run registry_parse ...` - **70,859 executions**, 0
+  crashes, peak RSS 465 MB.
+- `cargo +nightly fuzz run extract_path ...` - **535,360 executions**, 0
+  crashes, peak RSS 420 MB. The target asserts every accepted path is relative
+  and contains only normal components.
+- `cargo +nightly fuzz run state_parse ...` - **353,785 executions**, 0
+  crashes, peak RSS 519 MB.
+- Total: **1,350,504 executions** across the five 30 s campaigns.
+- `cargo fmt --all --check` - green.
+- `cargo clippy --workspace --all-targets -- -D warnings` - green.
+- `cargo test --workspace --all-targets -- --test-threads=1` -
+  **179 passed, 0 failed across 20 suites**.
+- `cargo audit` - green, 3 allowed transitive warnings (`paste`, `lru` x2).
+- `cargo build --workspace --release` - green in 53.45 s.
+
+**Setup notes**:
+
+- `--sanitizer none` fails to link on MSVC with unresolved
+  `__start___sancov_pcs`/`__stop___sancov_cntrs`. The default ASan build links,
+  but the target exits with `STATUS_DLL_NOT_FOUND` until
+  `clang_rt.asan_dynamic-x86_64.dll` (from the Visual Studio MSVC toolset) is
+  on `PATH`. Both facts are recorded in `fuzz/README.md`.
+- `burrow-cli` now has a `src/lib.rs` exposing `state`; `main.rs` imports it as
+  `burrow_cli::state` so the module is compiled once. The fuzz target calls the
+  new pure `RuntimeState::parse`.
+- `render_template` and `extract::validate_entry_path` are now public with doc
+  comments; they are the exact functions used by the normal paths.
+
+**Not verified**: a long soak (30 s per target), Linux/macOS ASan, and the tar
+and zip readers themselves. The extractor target fuzzes the path validator that
+both readers call before writing, not the archive container parsers.
+
+**Next**: A4 property tests (port allocator, atomic directory operations,
+template resolution), then A6 `doctor --report` and the Phase 1 compatibility
+matrix.

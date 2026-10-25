@@ -1,0 +1,1 @@
+{"version":1,"project":"shop","project_dir":"C:\\shop","pid":1234,"token":"secret","control_port":49152,"started_at":1700000000,"config_hash":"abc123","ready":true,"services":{"db":{"status":"not-a-status"}}}

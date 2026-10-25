@@ -1,0 +1,14 @@
+schema = 1
+name = "traversal"
+description = "Rejected seed"
+license = "MIT"
+upstream = "https://example.com/"
+source = "https://example.com/download"
+
+[versions."1.0"]
+platforms."windows-x86_64".url = "https://example.com/a.zip"
+platforms."windows-x86_64".sha256 = "00"
+platforms."windows-x86_64".size = 1
+platforms."windows-x86_64".archive = "zip"
+platforms."windows-x86_64".binaries = { server = "../server.exe" }
+run = { program = "server" }

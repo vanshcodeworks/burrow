@@ -197,6 +197,14 @@ fn extract_tar<R: Read>(reader: R, destination: &Path) -> Result<()> {
 }
 
 /// Normalizes an archive entry name and rejects anything that could escape.
+///
+/// This is the exact check [`extract`] applies before joining an entry to the
+/// destination. It is public so fuzz targets and tests can exercise the path
+/// rules without building an archive for every input.
+pub fn validate_entry_path(raw_name: &str) -> Result<PathBuf> {
+    safe_relative(raw_name)
+}
+
 fn safe_relative(raw_name: &str) -> Result<PathBuf> {
     let mut name = raw_name.trim_end_matches('/');
     while let Some(stripped) = name.strip_prefix("./") {
