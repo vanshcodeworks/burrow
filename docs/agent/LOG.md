@@ -156,3 +156,35 @@ warning path is implemented but not exercised), and Podman.
 **Next**: A2.2 interrupted restore/seed/initdb recovery, A2.3 corrupt secrets
 and `doctor` live-state preservation, then A2.7 hardlink/ADS coverage.
 
+## 2026-10-26 - cycle 6: new-user README pass
+
+**Task**: Follow only the README on a fresh project state; log every friction
+point and fix documentation that misled a new user.
+
+**Outcome**: The documented Node.js + PostgreSQL path worked end to end. Four
+documentation contradictions were found and fixed; no product code changed.
+
+**Commands and real results**:
+
+- Removed `examples\node-postgres\.burrow` (gitignored runtime state), ran
+  `npm install`, then `burrow up --detach --yes` with the release binary.
+- Fresh cluster, warm package cache: both services healthy in **10.28 s**
+  (the README had implied every later start is ~2 s; fixed).
+- `curl http://api.localhost/api/todos` returned **200** and the seeded row.
+- `burrow doctor --json`: **11 ok / 0 warnings / 0 failures**, including
+  `listeners`: "2 supervised listeners; none accept non-loopback traffic
+  without expose".
+- `BURROW_NO_BROWSER=1 burrow open` printed `http://api.localhost`.
+- `burrow down`: **0.61 s**, both service PIDs gone, `state.json` removed.
+- Fixed README limitations (registry packages, opt-in `watch`, container
+  fallback), FAQ registry/watch answers, and the warm-start wording.
+- Created `docs/agent/FRICTION.md`.
+
+**Not verified**: this was the development machine, not a VM/Sandbox/CI clean
+machine; `cargo install` was not re-run; the package cache was warm. The Phase 1
+clean-machine pass still has to repeat this from a fresh environment.
+
+**Next**: A2.2 interrupted restore/seed/initdb recovery, A2.3 corrupt secrets
+and `doctor` live-state preservation, then A2.7 hardlink/ADS coverage.
+
+

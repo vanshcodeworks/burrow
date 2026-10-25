@@ -60,9 +60,10 @@ burrow up
 
 The first start prints a trust summary, downloads the verified PostgreSQL
 archive (373,254,386 bytes), initializes the cluster, seeds it, and starts both
-services. Later starts reuse the shared cache and take about two seconds on the
-benchmark machine. Open <http://api.localhost> or the direct loopback URL from
-`burrow status`. Press `Ctrl+C` or run `burrow down` to stop.
+services. Later starts that reuse both the shared cache and the initialized
+cluster take about two seconds on the benchmark machine. Open
+<http://api.localhost> or the direct loopback URL from `burrow status`. Press
+`Ctrl+C` or run `burrow down` to stop.
 
 For the Python FastAPI example, activate a virtual environment first because
 managed services inherit the daemon's environment:
@@ -206,17 +207,22 @@ network access you have. The full trust model is in
 - Windows 10/11 x86_64 only. There is no Linux or macOS backend.
 - No sandbox, privilege separation, or production support. Services run with your
   full user rights.
-- The built-in registry currently contains PostgreSQL 16.15 only. There is no
-  managed Redis or MySQL entry; adding one requires a verified native Windows
-  build and a registry change described in [`docs/registry.md`](docs/registry.md).
+- The built-in registry contains PostgreSQL 16.15, NATS 2.15.1, and Caddy
+  2.11.7. There is no managed Redis or MySQL entry; adding one requires a
+  verified native Windows build and a registry change described in
+  [`docs/registry.md`](docs/registry.md). Unsupported services can use
+  `use = "container:IMAGE"` with a separately installed Docker or Podman.
 - Snapshots are full directory copies, not database dumps. They require the
   daemon to be stopped, are not incremental, and do not understand database
   formats.
-- No file watching or restart-on-change (Phase 2). Framework watchers such as
-  Vite, `uvicorn --reload`, and `cargo watch` still work inside a service.
+- File watching is opt-in per service and only watches the directories listed in
+  `watch`; it is not a whole-project watcher. Framework watchers such as Vite,
+  `uvicorn --reload`, and `cargo watch` still work inside a service.
 - `*.localhost` resolution depends on the machine. Use the direct loopback URL or
   add a hosts entry; the proxy works either way.
-- No GUI, cloud integration, telemetry, auto-updater, or container fallback.
+- No GUI, cloud integration, telemetry, or auto-updater. The optional container
+  fallback requires Docker or Podman and its containers have ephemeral
+  filesystems that snapshots do not cover.
 - No published release or signing certificate yet. Winget and Scoop manifests are
   drafts with explicit placeholders, not working installers.
 

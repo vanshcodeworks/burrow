@@ -27,8 +27,8 @@ process creation directly. There is no cross-platform backend.
 
 No. Burrow starts the command you configure; language runtimes must already be
 installed and on `PATH` (or referenced by absolute path). The only packages
-Burrow downloads are entries in its embedded registry. At present that is
-PostgreSQL 16.15.
+Burrow downloads are entries in its embedded registry. At present those are
+PostgreSQL 16.15, NATS 2.15.1, and Caddy 2.11.7.
 
 ## Do I need to run Burrow as administrator?
 
@@ -141,9 +141,12 @@ restart resets the breaker. See
 
 ## Does Burrow watch files and restart on change?
 
-No. File watching and restart-on-change are Phase 2 items. Your framework's own
-watcher (Vite, uvicorn `--reload`, `cargo watch`, ...) still works inside the
-service, because Burrow runs the process normally.
+Yes, if a service opts in with `watch = ["api/src"]`. Changes under the listed
+project-relative directories restart only that service after a short debounce;
+dependents keep running. Watching is not enabled by default and is not a
+whole-project watcher. Your framework's own watcher (Vite, uvicorn `--reload`,
+`cargo watch`, ...) still works inside the service, because Burrow runs the
+process normally. See the [configuration reference](config-reference.md#idle_stop-and-watch).
 
 ## Why does `api.localhost` not load?
 

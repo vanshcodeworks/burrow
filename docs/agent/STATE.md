@@ -12,20 +12,20 @@ Next: A2.2 interrupted restore/seed/initdb recovery, A2.3 corrupt secrets and
 `doctor` live-state preservation, then A2.7 hardlink/ADS coverage, A3 fuzzing,
 A4 property tests, A6 `doctor --report`.
 
-## Last cycle summary (2026-10-26, cycle 5)
+## Last cycle summary (2026-10-26, cycle 6)
 
-- **A2.6 shipped**: `burrow_supervisor::listening_sockets(roots)` reads the
-  IPv4/IPv6 IP Helper owner-PID TCP tables, walks a Toolhelp process snapshot,
-  and attributes child listeners to the supervised root. `doctor` adds a
-  `listeners` warning for non-loopback binds without `expose = true`; wildcard
-  binds with `expose` and loopback-only services are accepted. ADR 0006 and
-  security/CLI/troubleshooting docs updated.
-- **Tests**: supervisor `tests/listeners.rs` (loopback + wildcard + IPv6,
-  child attribution, listener gone after job close); CLI `tests/listeners.rs`
-  (wildcard warns, exposed wildcard accepted, loopback accepted). Test-only
-  `burrow-testbin bind <ADDRESS>` mode added.
-- Full suite: **164 passed / 0 failed across 19 suites**.
-- Release build green in 1m03s.
+- **New-user README pass**: followed the Node.js + PostgreSQL example from a
+  removed `.burrow` with the release binary. Both services healthy in 10.28 s
+  (warm cache, fresh cluster); routed URL returned 200; doctor 11 ok/0/0;
+  `down` in 0.61 s with no surviving PIDs.
+- **Fixed documentation contradictions**: README limitations (registry
+  packages, opt-in `watch`, container fallback), FAQ registry/watch answers,
+  and the warm-start wording.
+- **Created** `docs/agent/FRICTION.md`. This was not a clean machine; the
+  Phase 1 VM/Sandbox pass remains.
+- A2.6 (listener inspection) shipped earlier this run at `cd8b22a`; see LOG.
+- No product code changed in cycle 6, so the cycle-5 full gate remains the
+  latest verified result (164 tests / 19 suites).
 
 ## Check suite status (last full run, cycle 5)
 
