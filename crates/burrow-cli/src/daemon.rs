@@ -1315,9 +1315,10 @@ impl Daemon {
             "running package step"
         );
 
+        let working_directory = burrow_supervisor::process_working_directory(&slot.plan.cwd)?;
         let output = tokio::process::Command::new(&command.program)
             .args(&command.args)
-            .current_dir(&slot.plan.cwd)
+            .current_dir(working_directory)
             .envs(&slot.plan.env)
             .stdin(Stdio::null())
             .output()

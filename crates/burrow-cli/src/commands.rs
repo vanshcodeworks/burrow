@@ -169,10 +169,11 @@ async fn detach_daemon(project: &Project, services: &[String], json: bool) -> Re
         .with_context(|| format!("could not open {}", log_path.display()))?;
 
     let mut command = std::process::Command::new(executable);
+    let working_directory = burrow_supervisor::process_working_directory(&project.dir)?;
     command
         .arg("__daemon")
         .args(services)
-        .current_dir(&project.dir)
+        .current_dir(working_directory)
         .stdin(Stdio::null())
         .stdout(stdout)
         .stderr(stderr);
@@ -1062,9 +1063,10 @@ pub async fn exec(options: &Options, service: String, command: Vec<OsString>) ->
     let program = win::resolve_executable(program, &plan.cwd, search_path.as_deref())
         .with_context(|| format!("could not resolve `{}`", program.to_string_lossy()))?;
 
+    let working_directory = burrow_supervisor::process_working_directory(&plan.cwd)?;
     let status = std::process::Command::new(&program)
         .args(arguments)
-        .current_dir(&plan.cwd)
+        .current_dir(working_directory)
         .envs(&plan.env)
         .status()
         .with_context(|| format!("could not run {}", program.display()))?;
@@ -1086,7 +1088,8 @@ pub async fn open(options: &Options, service: Option<String>) -> Result<()> {
     }
 
     eprintln!("opening {url} ({name})");
-    win::open_url(&url).with_context(|| format!("could not open {url}"))?;
+    let working_directory = burrow_supervisor::process_working_directory(&project.dir)?;
+    win::open_url(&url, &working_directory).with_context(|| format!("could not open {url}"))?;
     Ok(())
 }
 

@@ -27,6 +27,20 @@ pub enum Error {
     #[error("invalid process specification: {0}")]
     InvalidSpec(&'static str),
 
+    /// The working directory cannot be passed to a child process.
+    #[error("{0}")]
+    InvalidWorkingDirectory(String),
+
+    /// A program path could not be shortened for process creation.
+    #[error("could not shorten `{path}` for process creation: {source}")]
+    ShortPath {
+        /// The path that was requested.
+        path: String,
+        /// The underlying Win32 error.
+        #[source]
+        source: windows::core::Error,
+    },
+
     /// The dedicated wait thread could not be started.
     #[error("could not start the process wait thread: {0}")]
     WaitThread(#[source] std::io::Error),

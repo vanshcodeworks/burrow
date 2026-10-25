@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{c_void, OsStr, OsString};
 use std::fs::File;
 use std::mem::{size_of, size_of_val};
-use std::os::windows::ffi::OsStrExt;
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::os::windows::io::FromRawHandle;
 use std::path::{Path, PathBuf};
 use std::ptr;
@@ -27,7 +27,7 @@ use windows::Win32::NetworkManagement::IpHelper::GetExtendedTcpTable;
 use windows::Win32::Networking::WinSock::{AF_INET, AF_INET6};
 use windows::Win32::Security::SECURITY_ATTRIBUTES;
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, ReadDirectoryChangesW, FILE_ACTION_ADDED, FILE_ACTION_MODIFIED,
+    CreateFileW, GetShortPathNameW, ReadDirectoryChangesW, FILE_ACTION_ADDED, FILE_ACTION_MODIFIED,
     FILE_ACTION_REMOVED, FILE_ACTION_RENAMED_NEW_NAME, FILE_ATTRIBUTE_NORMAL,
     FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OVERLAPPED, FILE_NOTIFY_CHANGE_CREATION,
     FILE_NOTIFY_CHANGE_DIR_NAME, FILE_NOTIFY_CHANGE_FILE_NAME, FILE_NOTIFY_CHANGE_LAST_WRITE,
@@ -425,6 +425,7 @@ pub(crate) fn spawn_in_job(job: &Job, request: &SpawnRequest) -> Result<SpawnedP
         &request.env,
     );
     let (resolved_program, request_args) = wrap_script(&resolved_program, &request.args);
+    let resolved_program = shorten_program(&resolved_program)?;
     let program_wide = wide_null(resolved_program.as_os_str());
     if has_interior_nul(&program_wide) {
         return Err(Error::InvalidSpec("program path contains a NUL character"));
@@ -455,8 +456,12 @@ pub(crate) fn spawn_in_job(job: &Job, request: &SpawnRequest) -> Result<SpawnedP
     }
 
     let environment = build_environment(&request.env);
-    let cwd_wide = request
+    let working_directory = request
         .cwd
+        .as_deref()
+        .map(process_working_directory)
+        .transpose()?;
+    let cwd_wide = working_directory
         .as_deref()
         .map(|path| wide_null(path.as_os_str()));
     if cwd_wide.as_ref().is_some_and(|wide| has_interior_nul(wide)) {
@@ -742,6 +747,129 @@ fn has_interior_nul(wide: &[u16]) -> bool {
     wide.iter()
         .take(wide.len().saturating_sub(1))
         .any(|unit| *unit == 0)
+}
+
+/// The largest working-directory path, in UTF-16 units, that
+/// `CreateProcessW` accepts. The limit includes the terminating NUL.
+const MAX_PATH_UNITS: usize = 260;
+
+/// Returns a working directory that `CreateProcessW` accepts.
+///
+/// `CreateProcessW` rejects an `lpCurrentDirectory` value of `MAX_PATH` or more
+/// UTF-16 units. A `\\?\` verbatim prefix does not help: it is rejected there
+/// too, and `cmd.exe` treats such a directory as a UNC path and silently falls
+/// back to `C:\Windows`. Long directories are therefore converted to their
+/// existing 8.3 short form, which is plain and shorter. When the volume has 8.3
+/// names disabled and the path is still too long, the error names the remedy
+/// instead of letting process creation fail with `ERROR_DIRECTORY`.
+///
+/// Short paths are returned unchanged except that a verbatim prefix is removed.
+pub fn process_working_directory(directory: &Path) -> Result<PathBuf> {
+    let plain = strip_verbatim(directory);
+    if utf16_len(&plain) < MAX_PATH_UNITS {
+        return Ok(plain);
+    }
+
+    let short = short_path(&plain).map_err(|source| {
+        Error::InvalidWorkingDirectory(format!(
+            "working directory `{}` is too long for a child process and its 8.3 short name \
+             could not be resolved ({source}); move the project to a path shorter than \
+             {MAX_PATH_UNITS} characters",
+            directory.display()
+        ))
+    })?;
+    let short = strip_verbatim(&short);
+    if utf16_len(&short) >= MAX_PATH_UNITS {
+        return Err(Error::InvalidWorkingDirectory(format!(
+            "working directory `{}` is too long for a child process even in 8.3 form; \
+             move the project to a path shorter than {MAX_PATH_UNITS} characters",
+            directory.display()
+        )));
+    }
+    Ok(short)
+}
+
+fn utf16_len(path: &Path) -> usize {
+    path.as_os_str().encode_wide().count()
+}
+
+/// Removes the `\\?\` prefix from drive-letter and UNC paths.
+///
+/// Volume-GUID paths are left alone because dropping the prefix would turn
+/// them into relative paths.
+fn strip_verbatim(path: &Path) -> PathBuf {
+    const PREFIX: &[u16] = &[b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16];
+    const UNC: &[u16] = &[b'U' as u16, b'N' as u16, b'C' as u16, b'\\' as u16];
+
+    let wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+    if wide.len() > PREFIX.len() && wide.starts_with(PREFIX) {
+        let rest = &wide[PREFIX.len()..];
+        if rest.starts_with(UNC) {
+            let mut plain = vec![b'\\' as u16, b'\\' as u16];
+            plain.extend_from_slice(&rest[UNC.len()..]);
+            return PathBuf::from(OsString::from_wide(&plain));
+        }
+        if rest.len() >= 2
+            && rest[0] <= 0x7f
+            && (rest[0] as u8).is_ascii_alphabetic()
+            && rest[1] == b':' as u16
+        {
+            return PathBuf::from(OsString::from_wide(rest));
+        }
+    }
+    path.to_path_buf()
+}
+
+/// Resolves the 8.3 short form of an existing long path.
+///
+/// `GetShortPathNameW` is itself subject to `MAX_PATH` unless the input uses
+/// the verbatim prefix, so the prefix is added for the call and removed by the
+/// caller.
+fn short_path(path: &Path) -> std::result::Result<PathBuf, windows::core::Error> {
+    const VERBATIM: &[u16] = &[b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16];
+
+    let wide = wide_null(path.as_os_str());
+    let mut input = Vec::with_capacity(wide.len() + 8);
+    if wide.starts_with(VERBATIM) {
+        input.extend_from_slice(&wide);
+    } else if wide.len() >= 2 && wide[0] == b'\\' as u16 && wide[1] == b'\\' as u16 {
+        input.extend("\\\\?\\UNC\\".encode_utf16());
+        input.extend_from_slice(&wide[2..]);
+    } else {
+        input.extend("\\\\?\\".encode_utf16());
+        input.extend_from_slice(&wide);
+    }
+
+    let mut buffer = vec![0u16; 32_768];
+    loop {
+        // SAFETY: `input` is NUL-terminated and `buffer` is a writable
+        // allocation whose length is passed exactly.
+        let length = unsafe { GetShortPathNameW(PCWSTR(input.as_ptr()), Some(&mut buffer)) };
+        if length == 0 {
+            return Err(last_error());
+        }
+        let length = length as usize;
+        if length <= buffer.len() {
+            buffer.truncate(length);
+            break;
+        }
+        buffer.resize(length, 0);
+    }
+
+    Ok(PathBuf::from(OsString::from_wide(&buffer)))
+}
+
+/// Converts a long program path to the short form passed as
+/// `lpApplicationName`, which `CreateProcessW` also limits to `MAX_PATH`.
+fn shorten_program(program: &Path) -> Result<PathBuf> {
+    if utf16_len(program) < MAX_PATH_UNITS {
+        return Ok(program.to_path_buf());
+    }
+    let short = short_path(program).map_err(|source| Error::ShortPath {
+        path: program.display().to_string(),
+        source,
+    })?;
+    Ok(strip_verbatim(&short))
 }
 
 /// Resolves a program name to an executable path.
@@ -1488,7 +1616,8 @@ fn parse_notify_records(buffer: &[u32], byte_count: usize, root: &Path, sender: 
 #[cfg(test)]
 mod tests {
     use super::{
-        append_quoted, build_command_line, build_environment, resolve_program, wrap_script,
+        append_quoted, build_command_line, build_environment, process_working_directory,
+        resolve_program, utf16_len, wrap_script, Error, MAX_PATH_UNITS,
     };
     use std::collections::BTreeMap;
     use std::ffi::{OsStr, OsString};
@@ -1629,5 +1758,77 @@ mod tests {
             .is_some_and(|name| name.eq_ignore_ascii_case("cmd.exe")));
         assert_eq!(args[0], OsString::from("/D"));
         assert!(args[3].to_string_lossy().contains("run dev"));
+    }
+
+    fn deep_directory(root: &Path) -> PathBuf {
+        let mut path = root.to_path_buf();
+        while utf16_len(&path) < MAX_PATH_UNITS + 20 {
+            path.push("long-segment-xxxxxxxxxxxxxxxxxxxx");
+        }
+        std::fs::create_dir_all(&path).expect("create deep directory");
+        path
+    }
+
+    #[test]
+    fn short_working_directories_are_returned_unchanged() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        assert_eq!(
+            process_working_directory(temp.path()).expect("short directory"),
+            temp.path()
+        );
+    }
+
+    #[test]
+    fn verbatim_prefixes_are_removed() {
+        assert_eq!(
+            process_working_directory(Path::new(r"\\?\C:\project")).expect("drive path"),
+            PathBuf::from(r"C:\project")
+        );
+        assert_eq!(
+            process_working_directory(Path::new(r"\\?\UNC\server\share\project"))
+                .expect("UNC path"),
+            PathBuf::from(r"\\server\share\project")
+        );
+    }
+
+    #[test]
+    fn long_working_directories_use_a_short_name() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let deep = deep_directory(temp.path());
+        let short = match process_working_directory(&deep) {
+            Ok(short) => short,
+            Err(Error::InvalidWorkingDirectory(message)) => {
+                // 8.3 name generation can be disabled per volume by an
+                // administrator. The helper must then explain the remedy.
+                assert!(message.contains("8.3"), "unexpected error: {message}");
+                return;
+            }
+            Err(other) => panic!("unexpected error: {other}"),
+        };
+
+        assert!(utf16_len(&short) < MAX_PATH_UNITS);
+        assert!(!short.as_os_str().to_string_lossy().starts_with(r"\\?\"));
+        std::fs::write(short.join("marker.txt"), b"short").expect("write through short path");
+        assert!(deep.join("marker.txt").is_file());
+    }
+
+    #[test]
+    fn a_missing_long_directory_reports_a_clear_error() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let mut missing = temp.path().to_path_buf();
+        while utf16_len(&missing) < MAX_PATH_UNITS + 20 {
+            missing.push("missing-segment-xxxxxxxxxxxxxxxx");
+        }
+
+        match process_working_directory(&missing) {
+            Err(Error::InvalidWorkingDirectory(message)) => {
+                assert!(message.contains("8.3"), "unexpected error: {message}");
+                assert!(
+                    message.contains("shorter than 260"),
+                    "unexpected error: {message}"
+                );
+            }
+            other => panic!("expected a clear error, got {other:?}"),
+        }
     }
 }

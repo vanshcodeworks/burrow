@@ -224,6 +224,7 @@ async fn command_check(
     let mut process = tokio::process::Command::new("cmd.exe");
     process.args(["/D", "/S", "/C", command]);
     if let Some(cwd) = cwd {
+        let cwd = crate::process_working_directory(cwd).map_err(|error| error.to_string())?;
         process.current_dir(cwd);
     }
     for (key, value) in env {

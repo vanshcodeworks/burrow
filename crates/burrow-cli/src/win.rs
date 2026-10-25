@@ -153,8 +153,12 @@ pub fn is_elevated() -> bool {
 }
 
 /// Opens `url` with the user's default browser, without waiting for it.
+///
+/// `working_directory` is passed explicitly because `cmd.exe` rejects an
+/// inherited current directory at or beyond `MAX_PATH`. The caller converts it
+/// with [`burrow_supervisor::process_working_directory`].
 #[cfg(windows)]
-pub fn open_url(url: &str) -> io::Result<()> {
+pub fn open_url(url: &str, working_directory: &Path) -> io::Result<()> {
     use std::os::windows::process::CommandExt;
 
     // The caller only passes URLs built from validated hostnames and ports, so
@@ -162,6 +166,7 @@ pub fn open_url(url: &str) -> io::Result<()> {
     let status = std::process::Command::new("cmd.exe")
         .args(["/D", "/S", "/C"])
         .raw_arg(format!("start \"\" \"{url}\""))
+        .current_dir(working_directory)
         .status()?;
     if status.success() {
         Ok(())
@@ -174,8 +179,11 @@ pub fn open_url(url: &str) -> io::Result<()> {
 
 /// Opens `url` with the platform opener on non-Windows hosts (tests only).
 #[cfg(not(windows))]
-pub fn open_url(url: &str) -> io::Result<()> {
-    let status = std::process::Command::new("xdg-open").arg(url).status()?;
+pub fn open_url(url: &str, working_directory: &Path) -> io::Result<()> {
+    let status = std::process::Command::new("xdg-open")
+        .arg(url)
+        .current_dir(working_directory)
+        .status()?;
     if status.success() {
         Ok(())
     } else {
