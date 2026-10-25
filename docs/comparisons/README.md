@@ -5,10 +5,13 @@ not trying to be every tool in this space. This page compares it with the tools 
 Windows developer is most likely to weigh, says where each alternative is the
 better fit, and links every competitor claim to official documentation.
 
-**No competitor was run or benchmarked for this page.** Competitor facts
-come from the official pages listed in [SOURCES.md](SOURCES.md), all retrieved on
-2026-10-26. Burrow's own measurements come from
-[`docs/benchmarks.md`](../benchmarks.md). Last reviewed: 2026-10-26.
+**Competitor facts come from documentation; one benchmark was run.** The claims
+below are tied to the official pages listed in [SOURCES.md](SOURCES.md), all
+retrieved on 2026-10-26. A Docker Compose startup benchmark was run separately on
+2026-10-25 and is reported in [`docs/benchmarks.md`](../benchmarks.md); it does
+not change the documentation-based claims below. No other competitor was run.
+Burrow's own measurements come from [`docs/benchmarks.md`](../benchmarks.md).
+Last reviewed: 2026-10-26.
 
 ## What Burrow is
 
@@ -82,8 +85,10 @@ Burrow is MIT OR Apache-2.0.
 
 **Fairness note on resources.** Docker Desktop's WSL 2 backend uses dynamic
 memory allocation and requests CPU and memory as needed rather than reserving a
-fixed block [S2]. This page does not report a Docker memory or startup number,
-and Burrow's daemon RSS should not be read as a like-for-like comparison.
+fixed block [S2]. The 2026-10-25 head-to-head reports container memory and
+startup, but container memory excludes Docker Desktop's VM and daemon, so
+Burrow's daemon RSS should not be read as a like-for-like total. See
+[`docs/benchmarks.md`](../benchmarks.md) for the method and caveats.
 
 **Choose Docker Desktop + Compose when** you need Linux services, isolation, or
 cross-platform parity. **Choose Burrow when** your services have trustworthy
@@ -250,24 +255,27 @@ Be honest about the boundary:
 
 ## Performance: what is measured and what is not
 
-Burrow's numbers below are from [`docs/benchmarks.md`](../benchmarks.md), measured
-on one Windows 11 Home machine (Ryzen 7 4800H, 15.4 GB RAM) with the
-`examples/node-postgres` project. They are one sample; the cold-start and
-quick-start figures include network time.
+Burrow's original numbers are from [`docs/benchmarks.md`](../benchmarks.md),
+measured on one Windows 11 Home machine (Ryzen 7 4800H, 15.4 GB RAM) with the
+`examples/node-postgres` project. A separate head-to-head on 2026-10-25 used
+Docker Desktop 24.0.7 with Compose v2.23.3-desktop.2 on the same machine,
+project, schema, seed, and `/api/todos` endpoint. Both stacks were measured to
+HTTP 200.
 
-| Measurement | Burrow result | Notes |
-| --- | ---: | --- |
-| Warm `burrow up` | 1.87 s | Second warm run: 1.95 s |
-| Daemon RSS | 10.6-12.6 MB | Burrow's own process, not the whole stack |
-| Cold `burrow up` | 61.35 s | Includes the 356 MiB PostgreSQL download, SHA-256 verification, extraction, `initdb`, seed, and health checks |
-| Checkout to first HTTP 200 | 245.24 s | Empty Cargo, npm, and Burrow caches; includes `cargo install` (162.62 s) and `npm install` (3.19 s) |
+| Measurement | Burrow | Docker Compose | Notes |
+| --- | ---: | ---: | --- |
+| Warm startup, three samples | 1.84-1.88 s | 1.92-3.20 s | Median 1.87 s vs 2.08 s; same endpoint |
+| Empty application data | 10.7 s | 4.11 s | Package and image caches warm; image pull/build excluded |
+| Daemon / container memory | 10.9-11.0 MB daemon RSS | 37.2-62.1 MB container memory | Not like-for-like; Compose excludes the Docker Desktop VM and daemon |
+| Cold `burrow up`, empty package cache | 61.35 s | not measured | Includes the 356 MiB PostgreSQL download; different setup boundary |
+| Checkout to first HTTP 200 | 245.24 s | not measured | Empty Cargo, npm, and Burrow caches; includes `cargo install` and `npm install` |
 
-**No competitor was benchmarked for this page.** The benchmark run did not have
-Docker's daemon running, so it reports no Docker comparison rather than
-inventing one. Docker Desktop's WSL 2 backend also uses dynamic memory
-allocation [S2], so a single "Docker uses X MB" number would be misleading even
-if measured. A future benchmark suite may add a like-for-like Compose run when
-the daemon is available; until then, treat the table as Burrow-only evidence.
+Compose was faster at initializing empty application data; Burrow was slightly
+faster and more consistent on warm starts. This is one machine and one sample
+set, not a statistical distribution. Docker Desktop's WSL 2 backend uses dynamic
+memory allocation [S2], so container memory is not Docker Desktop's total
+footprint. No Podman or other competitor was run. The method, caveats, and raw
+JSON are in [`docs/benchmarks.md`](../benchmarks.md).
 
 ## Maintaining this page
 

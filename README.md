@@ -108,10 +108,13 @@ descendant process; PostgreSQL accounts for roughly 100 MB and Node for roughly
 
 Both published targets were met: the daemon stays below 20 MB idle, and a warm
 `burrow up` is well under 10 seconds. The method and machine details are in
-[`docs/benchmarks.md`](docs/benchmarks.md). Docker CLI 24.0.7 was installed, but
-its daemon was not running during the measurement, so no Docker comparison is
-reported. The benchmark script skips that comparison rather than inventing a
-number.
+[`docs/benchmarks.md`](docs/benchmarks.md). A Docker Desktop 24.0.7 + Compose
+head-to-head on 2026-10-25 used the same example and endpoint: warm startup was
+**1.84-1.88 s** for Burrow and **1.92-3.20 s** for Compose (median 1.87 s vs
+2.08 s), while Compose initialized empty application data faster (**4.11 s** vs
+**10.7 s**). Image pull/build and Burrow's package download are setup and
+excluded from those startup numbers. The benchmark page has the method, memory
+caveats, and raw data.
 
 Separately, a documented quick-start pass on 2026-10-26 went from a fresh
 checkout to the first seeded HTTP 200 in **4 min 5 s** with empty Cargo, npm,
@@ -125,9 +128,10 @@ services that already have trustworthy builds.
 
 | Property | Burrow | Docker Desktop + Compose on Windows |
 | --- | --- | --- |
-| Process model | Native Windows processes, one Job Object per service | Linux containers in a managed VM / WSL 2 |
-| Resource overhead | 10.6-12.6 MB daemon RSS measured here | Not measured here; Docker daemon was not running |
-| Startup | 1.87-1.95 s warm for this example | Not measured here |
+| Process model | Native Windows processes, one Job Object per service (optional container fallback) | Linux containers in a managed VM / WSL 2 |
+| Resource overhead | 10.9-11.0 MB daemon RSS measured here | 37.2-62.1 MB container memory, excluding Docker Desktop's VM and daemon; not like-for-like |
+| Warm startup | 1.84-1.88 s to HTTP 200 | 1.92-3.20 s to HTTP 200 |
+| Empty application data | 10.7 s (package cache warm) | 4.11 s (images cached) |
 | Isolation | None; services share your user account | Namespaces, cgroups, and a VM boundary |
 | Linux binaries and images | Not supported | Supported |
 | Reproducible inputs | Registry entries pin URL, size, SHA-256, and version | Image tags and digests |
@@ -144,8 +148,9 @@ Compose, Overmind, VS Code Dev Containers, WinSW, and NSSM is in
 [`docs/comparisons/README.md`](docs/comparisons/README.md). It states where each
 alternative is the better fit. Competitor facts come from official documentation
 retrieved 2026-10-26; the source ledger is
-[`docs/comparisons/SOURCES.md`](docs/comparisons/SOURCES.md). No competitor was
-benchmarked.
+[`docs/comparisons/SOURCES.md`](docs/comparisons/SOURCES.md). Docker Compose
+startup is measured in [`docs/benchmarks.md`](docs/benchmarks.md); no other
+competitor was run.
 
 ## What works now
 
