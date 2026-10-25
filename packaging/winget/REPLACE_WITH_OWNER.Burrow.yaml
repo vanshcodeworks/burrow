@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.6.0.schema.json
+#
+# DRAFT: replace every REPLACE_WITH_* value before submitting this manifest.
+# See ../README.md for the release and checksum steps.
+
+PackageIdentifier: REPLACE_WITH_OWNER.Burrow
+PackageVersion: 0.1.0
+PackageName: Burrow
+Publisher: REPLACE_WITH_OWNER
+License: MIT OR Apache-2.0
+LicenseUrl: https://github.com/REPLACE_WITH_OWNER/Burrow/blob/main/LICENSE-MIT
+Copyright: Copyright (c) Burrow contributors
+ShortDescription: Native Windows local development environment manager
+Description: >-
+  Burrow runs services from one burrow.toml as native Windows processes, with
+  automatic ports, generated environment variables, health-checked startup,
+  verified package downloads, snapshots, and a live terminal dashboard. It does
+  not require Docker, a virtual machine, or WSL.
+Moniker: burrow
+Tags:
+  - developer-tools
+  - local-development
+  - postgresql
+  - rust
+  - windows
+PackageUrl: https://github.com/REPLACE_WITH_OWNER/Burrow
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/REPLACE_WITH_OWNER/Burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip
+    InstallerSha256: REPLACE_WITH_SHA256
+    InstallerType: zip
+    NestedInstallerType: portable
+    NestedInstallerFiles:
+      - RelativeFilePath: burrow.exe
+        PortableCommandAlias: burrow
+ManifestType: singleton
+ManifestVersion: 1.6.0

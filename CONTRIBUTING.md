@@ -54,9 +54,25 @@ Use Conventional Commits, with one logical change per commit:
 
 ## Unsafe code
 
-In product code, `unsafe` is limited to `crates/burrow-supervisor/src/win.rs` in
-M1. Every unsafe block needs a `// SAFETY:` comment explaining why its
-preconditions hold. If you need a Win32 call, add a safe wrapper in that module
-instead of spreading raw handles through the supervisor. Test-only observation
-helpers may call Win32 query functions directly, but they follow the same
-SAFETY-comment rule.
+In product code, `unsafe` is confined to each crate's private `win` module:
+`crates/burrow-supervisor/src/win.rs` and `crates/burrow-cli/src/win.rs`. Every
+unsafe block needs a `// SAFETY:` comment explaining why its preconditions hold.
+If you need a Win32 call, add a safe wrapper in that module instead of spreading
+raw handles through the rest of the crate. Test-only observation helpers may call
+Win32 query functions directly, but they follow the same SAFETY-comment rule.
+
+## Documentation and community
+
+- User documentation lives in [`docs/`](docs/). Start with
+  [`getting-started.md`](docs/getting-started.md), then the
+  [CLI](docs/cli.md), [configuration](docs/config-reference.md), and
+  [registry](docs/registry.md) references.
+- Security-sensitive changes should be checked against
+  [`docs/security.md`](docs/security.md).
+- Release and packaging drafts are in [`packaging/`](packaging/); see
+  [`packaging/README.md`](packaging/README.md) before changing the release
+  workflow.
+- By participating, you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
+- Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md),
+  not in a public issue.
+

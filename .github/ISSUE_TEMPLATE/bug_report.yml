@@ -1,0 +1,79 @@
+name: Bug report
+description: Report a reproducible problem with Burrow
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Do not paste `.burrow/secrets`, generated
+        passwords, connection URLs containing passwords, or other private data.
+        Redact paths and hostnames if they are sensitive.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A clear, short description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the exact commands and the smallest configuration that shows the problem.
+      placeholder: |
+        1. cd examples\node-postgres
+        2. burrow up --detach --yes
+        3. burrow status
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the exact error text and exit code.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Run these commands and paste the output. `doctor` may include paths, but not generated passwords.
+      placeholder: |
+        burrow --version
+        Windows version (winver)
+        Rust version (rustc --version), if built from source
+        burrow doctor --json
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Service logs from `burrow logs <service>` or the daemon log at `.burrow/daemon.log`.
+      render: shell
+  - type: textarea
+    id: config
+    attributes:
+      label: Minimal burrow.toml
+      description: Redact secrets, absolute paths, and private hostnames. Do not include `.burrow/secrets`.
+      render: toml
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues before opening this one.
+          required: true
+        - label: I removed secrets and generated passwords from this report.
+          required: true
+        - label: I can reproduce this on a supported Windows version.
+          required: true

@@ -1,0 +1,132 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, for example v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test --workspace --all-targets -- --test-threads=1
+
+      - name: Build release
+        run: cargo build --release -p burrow-cli --locked
+
+      # Optional code signing. Set both repository secrets to enable it:
+      #   WINDOWS_CERTIFICATE_BASE64  base64 of a .pfx file
+      #   WINDOWS_CERTIFICATE_PASSWORD  password for that .pfx
+      # Without them the executable and zip are published unsigned.
+      - name: Sign executable (optional)
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
+            Write-Host "No signing certificate configured; publishing an unsigned build."
+            exit 0
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            throw "WINDOWS_CERTIFICATE_BASE64 is set but WINDOWS_CERTIFICATE_PASSWORD is empty."
+          }
+
+          $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
+          if (-not $signtool) {
+            $kits = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin"
+            $signtool = Get-ChildItem -Path $kits -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+          }
+          if (-not $signtool) {
+            throw "signtool.exe was not found. Install the Windows SDK or remove the signing secrets."
+          }
+
+          $pfx = Join-Path $env:RUNNER_TEMP "burrow-signing.pfx"
+          [IO.File]::WriteAllBytes(
+            $pfx,
+            [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
+          )
+          $password = ConvertTo-SecureString `
+            -String $env:WINDOWS_CERTIFICATE_PASSWORD `
+            -Force -AsPlainText
+          $certificate = Import-PfxCertificate `
+            -FilePath $pfx `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -Password $password
+
+          & $signtool.Source sign `
+            /sha1 $certificate.Thumbprint `
+            /fd SHA256 `
+            /td SHA256 `
+            /tr http://timestamp.digicert.com `
+            target\release\burrow.exe
+          if ($LASTEXITCODE -ne 0) {
+            throw "signtool failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Package
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            throw "No release tag was provided."
+          }
+
+          $name = "burrow-$tag-windows-x86_64"
+          $stage = Join-Path "dist" $name
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "target\release\burrow.exe" $stage
+          Copy-Item "README.md", "LICENSE-MIT", "LICENSE-APACHE" $stage
+          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath (Join-Path "dist" "$name.zip")
+
+          $hash = (Get-FileHash (Join-Path "dist" "$name.zip") -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $name.zip" | Set-Content "dist\SHA256SUMS.txt" -Encoding ascii
+          Get-Content "dist\SHA256SUMS.txt"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: burrow-windows-x86_64
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          $assets = @(Get-ChildItem "dist" -File | ForEach-Object { $_.FullName })
+          gh release create $tag @assets `
+            --target $env:GITHUB_SHA `
+            --title "Burrow $tag" `
+            --generate-notes
