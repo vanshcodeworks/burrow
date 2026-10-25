@@ -2,14 +2,13 @@
 
 ## Tier A — verification and hardening
 
-- [ ] **A1 Claim audit** (in progress): map every roadmap/README claim to a
-      test or measurement in `CLAIMS.md`. Flag any claim with no backing.
+- [x] **A1 Claim audit**: full map in `CLAIMS.md`; 7 gaps found and queued
+      (two closed since: secrets scan A2.5, junction test A2.7 partial).
 - [ ] **A2 Adversarial suite**:
-  - [ ] A2.1 Kill the daemon parent by every means (taskkill /F on daemon,
-        /T tree kill, taskkill the console, hard process exit) and assert zero
-        orphan service processes after each. Extend
-        `crates/burrow-supervisor/tests/job_lifecycle.rs` and add a CLI-level
-        test that kills a detached daemon and proves ports/processes are gone.
+  - [x] A2.1 (partial) CLI-level: force-killed daemon (taskkill /F, no /T)
+        → service port refuses, project recovers on the same port
+        (tests/adversarial.rs, 3/3 runs). Remaining kill vectors: /T tree
+        kill of the console, logoff scenarios.
   - [ ] A2.2 Interrupted snapshot/restore/seed/initdb: kill the daemon (or the
         burrow process) mid-operation; assert `.burrow` remains recoverable
         (no half-snapshots listed, no half-restored service dirs, markers
@@ -19,15 +18,16 @@
         delete live state.
   - [ ] A2.4 Port collisions across concurrent projects: two projects with the
         same fixed port; assert the second fails with a remedy, not a crash.
-  - [ ] A2.5 Secrets scanning: assert no secret bytes appear in daemon.log,
-        service logs, state.json, snapshots, or `burrow status` output for a
-        project with a generated password.
+  - [x] A2.5 Secrets scanning: tests/secrets.rs scans daemon.log, all
+        service logs, state.json, status (human+json), logs, project env,
+        and a snapshot; positive control on `burrow env <service>`.
   - [ ] A2.6 Non-loopback listener detection: testbin that binds 0.0.0.0;
         assert doctor warns (if implemented) or add the check.
-  - [ ] A2.7 Extractor/data attacks: zip-slip, symlink, hardlink, junction,
-        reserved names (CON, NUL, trailing dot/space), ADS (`file:stream`) —
-        many exist in burrow-pkg tests; audit coverage and fill gaps,
-        especially junction/ADS paths in burrow-data (reparse point handling).
+  - [x] A2.7 (partial) junction rejection in snapshots now tested (real
+        mklink /J; error names the path; nothing left behind). Remaining:
+        hardlink + ADS in burrow-data, non-Windows symlink path.
+  - [ ] A2.8 Interrupted-then-resumed package download test (the M3 resume
+        claim has no test; `.part` file + Range re-download).
 - [ ] **A3 Fuzzing**: cargo-fuzz targets for config parser, template engine,
       registry parser, extractor path logic, state.json parser. Needs a fuzz
       crate (does not ship in the workspace build).

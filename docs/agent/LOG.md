@@ -35,3 +35,50 @@ fallback (no podman installed); ARM64; long-run soak of idle-stop under
 hours of traffic.
 
 **Next**: Tier A1 claim audit into `CLAIMS.md`, then A2 adversarial suite.
+
+## 2026-10-25 — cycles 2-3: security upgrade + adversarial suite round 1
+
+**Task**: cargo audit; fix findings; Tier A2 adversarial tests (orphan
+kill, secrets scan, junction rejection) using sub agents.
+
+**Outcome**: audit green; three adversarial tests landed; 154 workspace
+tests pass; all committed on `agent/work`.
+
+**Commands and real results**:
+
+- `cargo install cargo-audit --locked` (retry with CARGO_TARGET_DIR=/tmp)
+  — succeeded; v0.22.2.
+- `cargo audit` — found 3 vulnerabilities (RUSTSEC-2026-0367/0368/0369,
+  zip 5.1.1, `ZipArchive::extract`-based; Burrow never calls extract but
+  the gate is red regardless). Upgraded zip to 9.1.0; extractor adapted
+  to zip 9's `entry.name() -> Result<Cow<str>>` (invalid UTF-8 names now
+  rejected at read). `cargo audit` re-run: green (3 allowed warnings:
+  paste unmaintained, lru unsound — transitive, not ours).
+- `cargo test -p burrow-pkg` after upgrade: 17/17 pass.
+- Sub agent 1 (junction test): added
+  `a_junction_inside_a_data_directory_is_rejected` to
+  `crates/burrow-data/src/snapshot.rs`; `cargo test -p burrow-data --lib`
+  → 8/8 pass; clippy/fmt clean. Real `mklink /J` junction; rejection
+  verified with the exact error wording.
+- Sub agent 2 (orphan test): created
+  `crates/burrow-cli/tests/adversarial.rs`
+  `a_force_killed_daemon_leaves_no_orphans_and_the_project_recovers`;
+  3/3 runs passed (10.7–16.6 s); port-refusal proof, stale-state
+  recovery, stable-port reuse; tasklist diagnostic on failure; no
+  leftover burrow.exe after runs.
+- Sub agent 3 (secrets test): spawn failed twice (user concurrency
+  limit; then DNS error) — wrote it inline instead:
+  `crates/burrow-cli/tests/secrets.rs` passes first run (3.45 s).
+- Full suite `cargo test --workspace --all-targets -- --test-threads=1`:
+  **154 passed / 0 failed** across 15 suites. phase2 suite took 272 s
+  (cold docker image pull); others normal.
+- Commits: `fix(deps)` zip upgrade, `test(data)` junction,
+  `test(cli)` orphan recovery, `test(cli)` secrets scan.
+
+**Not verified**: podman path; non-Windows symlink path of the snapshot
+rejection (test is windows-gated like the repo); the SKIPPED-ENV branch
+of the junction test (junctions never need admin here).
+
+**Next**: A2.2 interrupted data operations; A2.3 stale-state corruption;
+A2.4 concurrent-project port collisions; A2.6 non-loopback listener
+detection; A2.8 download-resume test; A-flake-1.

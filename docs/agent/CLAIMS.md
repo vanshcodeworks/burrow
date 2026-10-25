@@ -83,10 +83,20 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | More registry services | `builtin.rs` tests pin nats/caddy URL+size+hash; live `pkg add` + `pkg verify` + `burrow up` with both healthy this run (LOG cycle 1) | verified |
 | Optional container fallback | `tests/phase2.rs`: missing-engine failure with remedy; live Docker 24.0.7 round trip (healthy, `container:...` label, HTTP 200, no leftover container). Config validation tests for `container:`/`container_port`/seed rejection. Podman path untested (no podman here) | verified (docker) / gap (podman — queued C13) |
 
-## Gaps found by this audit (all queued)
+## Post-audit hardening (added after the audit)
 
-1. A2.5 secrets-scanning test (M4 "never logged" is code-reviewed, not tested).
-2. A2.8 interrupted-download resume test (M3).
+| Claim | Evidence | Status |
+| --- | --- | --- |
+| Orphan-free under daemon force-kill (M1, end-to-end) | `tests/adversarial.rs::a_force_killed_daemon_leaves_no_orphans_and_the_project_recovers` (3/3 runs) | verified |
+| Junctions in data directories are refused (M6) | `snapshot.rs::a_junction_inside_a_data_directory_is_rejected` (real mklink /J) | verified |
+| Dependency audit green (CI claim) | `cargo audit` locally green after zip 9.1.0 (`fbd6459`); CI job unchanged | verified |
+
+## Gaps found by this audit (queued)
+
+1. ~~A2.5 secrets-scanning test~~ **closed**: `tests/secrets.rs` scans
+   daemon.log, service logs, state.json, status/logs/env output, and a
+   snapshot; positive control via `burrow env <service>`.
+2. A2.8 interrupted-download resume test (M3) — still open.
 3. E1 automated example smoke tests in CI (M6).
 4. E3 Docker Compose comparison measurement for the README headline (now
    possible; engine running).
