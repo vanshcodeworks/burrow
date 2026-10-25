@@ -36,7 +36,7 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | Claim | Evidence | Status |
 | --- | --- | --- |
 | Registry TOML, one file per service | `registry.rs` tests (prefix selection, actionable errors, hash normalization, invalid documents rejected, `unsupported_native` fallback) | verified |
-| SHA-256-verified, resumable downloads into shared content-addressed cache | Implementation: `cache.rs` (`.part` files kept at line 433, resume via Range per module docs, hash-before-use). Automated tests cover hashing, gc, and corrupt-archive verification. **No automated test drives an interrupted-then-resumed download** | verified (code) / gap (resume path untested — queued A2.8) |
+| SHA-256-verified, resumable downloads into shared content-addressed cache | Implementation: `cache.rs` (`.part` files kept on incomplete transfer, resume via Range per module docs, hash-before-use). `cache.rs::an_interrupted_download_resumes_from_the_part_file` seeds a `.part` file, asserts the server receives `Range: bytes=16384-`, and verifies the completed hash-checked package, removed `.part`, and marker. Other tests cover hashing, gc, and corrupt-archive verification | verified |
 | Hardened extraction rejecting zip-slip and traversal | `extract.rs` tests: zip-slip, absolute/reserved names, tar traversal, tar symlinks, non-empty target refusal | verified |
 | PostgreSQL entry with verified upstream source and hash | `builtin.rs` test pins URL/size/hash; live `pkg add`/`pkg verify`/`burrow up` reproduced this run (docs/agent/LOG.md cycle 1) | verified |
 | Database initialization and one-time seeding | `burrow-data` tests (init marker required, seeding once + script hash, invalid markers treated as missing); examples seed for real | verified |
@@ -90,16 +90,17 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | Orphan-free under daemon force-kill (M1, end-to-end) | `tests/adversarial.rs::a_force_killed_daemon_leaves_no_orphans_and_the_project_recovers` (3/3 runs) | verified |
 | Junctions in data directories are refused (M6) | `snapshot.rs::a_junction_inside_a_data_directory_is_rejected` (real mklink /J) | verified |
 | Dependency audit green (CI claim) | `cargo audit` locally green after zip 9.1.0 (`fbd6459`); CI job unchanged | verified |
+| Corrupt state/ports recovery | `tests/data_safety.rs`: corrupt `state.json` fails loudly, is never deleted, and recovers after removal; truncated `ports.json` fails startup with `invalid port assignment file` and recovers after removal | verified |
+| Interrupted snapshot leaves no listed debris | `tests/data_safety.rs::half_written_snapshot_is_never_listed`: a crash-simulated `.burrow-tmp-*` directory is not listed, not restored, and does not block a later snapshot | verified |
+| Interrupted download resumes | `cache.rs::an_interrupted_download_resumes_from_the_part_file` (local range server, progress offset, Range request, completed package, `.part` removed) | verified |
 
 ## Gaps found by this audit (queued)
 
 1. ~~A2.5 secrets-scanning test~~ **closed**: `tests/secrets.rs` scans
    daemon.log, service logs, state.json, status/logs/env output, and a
    snapshot; positive control via `burrow env <service>`.
-2. A2.8 interrupted-download resume test (M3) — still open.
-3. E1 automated example smoke tests in CI (M6).
-4. E3 Docker Compose comparison measurement for the README headline (now
+2. E1 automated example smoke tests in CI (M6).
+3. E3 Docker Compose comparison measurement for the README headline (now
    possible; engine running).
-5. E5 end-to-end TUI session test (M5 covered by unit tests only).
-6. C13 podman verification of the container fallback.
-7. A-flake-1 timing-sensitive health-timeout test (observed once).
+4. E5 end-to-end TUI session test (M5 covered by unit tests only).
+5. C13 podman verification of the container fallback.

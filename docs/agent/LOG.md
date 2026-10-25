@@ -82,3 +82,32 @@ of the junction test (junctions never need admin here).
 **Next**: A2.2 interrupted data operations; A2.3 stale-state corruption;
 A2.4 concurrent-project port collisions; A2.6 non-loopback listener
 detection; A2.8 download-resume test; A-flake-1.
+
+## 2026-10-26 - cycle 4: stale-state, snapshot debris, and download-resume tests
+
+**Task**: Close A2.2 (partial), A2.3 (partial), A2.8, and A-flake-1; re-run
+the full gate on the updated tree.
+
+**Outcome**: Four verification gaps closed or narrowed; full gate green.
+
+**Commands and real results**:
+
+- `cargo test -p burrow-pkg --lib an_interrupted_download_resumes_from_the_part_file`
+  - 1/1 pass. The first draft of the local HTTP server used literal LF-only
+  string breaks instead of `\r\n`; corrected before the run, so the request
+  terminator and response framing are real HTTP/1.1.
+- `cargo test -p burrow-cli --test data_safety -- --test-threads=1`
+  - 3/3 pass (corrupt state, truncated ports, half-written snapshot).
+- `cargo fmt --all --check` - green.
+- `cargo clippy --workspace --all-targets -- -D warnings` - green.
+- `cargo test --workspace --all-targets -- --test-threads=1` -
+  **159 passed, 0 failed across 17 suites**.
+- A-flake-1: the 20 s wall-clock assertion in
+  `a_failed_health_check_stops_the_daemon_and_leaves_no_state` is now 60 s;
+  the health-check timeout path itself is unchanged.
+
+**Not verified**: interrupted restore/seed/initdb (A2.2 remainder), corrupt
+secrets and doctor live-state preservation (A2.3 remainder), non-loopback
+listener detection (A2.6), hardlink/ADS snapshot entries (A2.7 remainder).
+
+**Next**: A2.6 and the A2.2/A2.3 remainders, then A3 fuzzing.

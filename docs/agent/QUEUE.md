@@ -9,15 +9,17 @@
         → service port refuses, project recovers on the same port
         (tests/adversarial.rs, 3/3 runs). Remaining kill vectors: /T tree
         kill of the console, logoff scenarios.
-  - [ ] A2.2 Interrupted snapshot/restore/seed/initdb: kill the daemon (or the
-        burrow process) mid-operation; assert `.burrow` remains recoverable
-        (no half-snapshots listed, no half-restored service dirs, markers
-        consistent).
-  - [ ] A2.3 Stale state after "power loss": corrupt/truncate state.json,
-        ports.json, secrets; assert doctor/down/up recover cleanly and never
-        delete live state.
-  - [ ] A2.4 Port collisions across concurrent projects: two projects with the
-        same fixed port; assert the second fails with a remedy, not a crash.
+  - [x] A2.2 (partial) Half-written snapshot staging debris: a crash-simulated
+        `.burrow-tmp-*` directory is never listed, never restored, and does
+        not block later snapshots (`tests/data_safety.rs`). Remaining:
+        interrupted restore/seed/initdb with a killed daemon.
+  - [x] A2.3 (partial) Corrupt/truncated `state.json` fails loudly and is
+        never deleted; truncated `ports.json` fails startup with an actionable
+        error; deleting either file recovers (`tests/data_safety.rs`).
+        Remaining: corrupt `secrets`, live-state preservation under `doctor`.
+  - [x] A2.4 Port collisions across concurrent projects: a fixed-port
+        collision fails the second project with a remedy, not a crash
+        (`tests/cli.rs`, `6b815eb`).
   - [x] A2.5 Secrets scanning: tests/secrets.rs scans daemon.log, all
         service logs, state.json, status (human+json), logs, project env,
         and a snapshot; positive control on `burrow env <service>`.
@@ -26,8 +28,10 @@
   - [x] A2.7 (partial) junction rejection in snapshots now tested (real
         mklink /J; error names the path; nothing left behind). Remaining:
         hardlink + ADS in burrow-data, non-Windows symlink path.
-  - [ ] A2.8 Interrupted-then-resumed package download test (the M3 resume
-        claim has no test; `.part` file + Range re-download).
+  - [x] A2.8 Interrupted-then-resumed package download: a local range server
+        proves the `.part` file offset, the `Range` request, the completed
+        hash-checked package, and removal of the partial file
+        (`cache.rs::an_interrupted_download_resumes_from_the_part_file`).
 - [ ] **A3 Fuzzing**: cargo-fuzz targets for config parser, template engine,
       registry parser, extractor path logic, state.json parser. Needs a fuzz
       crate (does not ship in the workspace build).
@@ -37,9 +41,9 @@
       spaces, OneDrive dirs, non-admin. Manual test script + docs page.
 - [ ] **A6 Crash safety**: `burrow doctor --report` bundle (redacted);
       structured local crash notes.
-- [ ] **A-flake-1** `a_failed_health_check_stops_the_daemon_and_leaves_no_state`
-      asserts < 20 s wall time; failed once under compile load. Relax or make
-      load-independent.
+- [x] **A-flake-1** `a_failed_health_check_stops_the_daemon_and_leaves_no_state`
+      asserted < 20 s wall time and failed once under compile load. Relaxed to
+      60 s; the health-check timeout itself is unchanged.
 
 ## Tier B — resources
 
