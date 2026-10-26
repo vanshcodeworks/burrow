@@ -114,7 +114,8 @@ struct LogFile {
 }
 
 impl LogWriter {
-    /// Opens `<directory>/<service>.log`, creating the directory if needed.
+    /// Opens `<directory>/<service>.log`, creating the directory and an empty
+    /// log file if needed.
     pub(crate) fn open(
         directory: &Path,
         service: &str,
@@ -123,13 +124,27 @@ impl LogWriter {
     ) -> std::io::Result<Self> {
         std::fs::create_dir_all(directory)?;
         let base = directory.join(format!("{service}.log"));
+        // Create the file eagerly so a diagnostic path in an error message
+        // exists even when the service is killed before its first output line.
+        // A failure here is not fatal: the next append retries the open.
+        let mut file = None;
+        let mut size = 0;
+        match OpenOptions::new().create(true).append(true).open(&base) {
+            Ok(opened) => {
+                size = opened.metadata().map_or(0, |metadata| metadata.len());
+                file = Some(opened);
+            }
+            Err(error) => {
+                tracing::warn!(%error, path = %base.display(), "could not create service log file");
+            }
+        }
         Ok(Self {
             inner: Arc::new(Mutex::new(LogFile {
                 directory: directory.to_path_buf(),
                 base,
                 max_bytes: max_bytes.max(64),
-                file: None,
-                size: 0,
+                file,
+                size,
             })),
             ring,
         })
@@ -228,6 +243,17 @@ mod tests {
         let since = ring.snapshot(4, 0);
         assert_eq!(since.len(), 1);
         assert_eq!(since[0].text, "line 5");
+    }
+
+    #[test]
+    fn open_creates_an_empty_log_file_before_the_first_line() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let ring = std::sync::Arc::new(LogRing::new(10));
+        let _writer = LogWriter::open(temp.path(), "api", 1024, ring).expect("writer");
+
+        let path = temp.path().join("api.log");
+        assert!(path.is_file(), "log file was not created eagerly");
+        assert_eq!(path.metadata().expect("metadata").len(), 0);
     }
 
     #[test]
