@@ -23,7 +23,7 @@ use burrow_cli::state;
 mod top;
 mod win;
 
-/// Docker Compose's reproducibility, at a fraction of the resources, native on Windows.
+/// Native Windows local development stacks - no Docker daemon or VM by default.
 #[derive(Debug, Parser)]
 #[command(name = "burrow", version, about, propagate_version = true)]
 struct Cli {
