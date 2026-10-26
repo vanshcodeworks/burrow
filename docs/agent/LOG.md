@@ -887,3 +887,95 @@ human, and nothing was published, tagged, signed, or posted.
 cargo-deny decision, signing plan, winget/Scoop drafts after a human release,
 E2). Do not write `LAUNCH_READINESS.md` until the Phase 1 blockers and
 human-only launch steps are resolved.
+
+## 2026-10-27 - cycle 18: release dry-run, SBOM, and dependency policy
+
+**Task**: Finish the packaging/trust slice: a local release dry-run with
+checksums and an SBOM, a cargo-deny policy in CI, a reviewed signing plan, and
+an honest docs-site decision. Keep every hash local and every publish step
+human-only.
+
+**What changed**:
+
+- Added `scripts/release-dry-run.ps1`. It builds `burrow-cli --release
+  --locked`, stages `burrow.exe` plus the README and both licenses, creates the
+  zip, generates a CycloneDX 1.5 SBOM with `cargo-cyclonedx`, writes
+  `SHA256SUMS.txt` for both files, extracts the zip, checks the contents and
+  hashes, and runs the packaged binary's `--version` and `--help`. It never
+  tags, signs, uploads, or publishes. `-SkipBuild`, `-OutputDir`, `-KeepStage`,
+  and `-SkipSbom` are supported.
+- Added `deny.toml` and wired `cargo deny check --hide-inclusion-graph` into
+  the CI audit job and the release workflow. The graph is limited to
+  `x86_64-pc-windows-msvc`, licenses are permissive-only, sources are
+  crates.io-only, and `RUSTSEC-2024-0436` (`paste` 1.0.15 via ratatui) is
+  ignored with a reason. Duplicate versions warn; the `lru` unsound advisories
+  remain visible through `cargo audit` but are informational to cargo-deny.
+- The release workflow now installs cargo-cyclonedx, generates
+  `burrow-<tag>-windows-x86_64.cdx.json`, validates `bomFormat`/`specVersion`,
+  hashes the zip and SBOM, and uploads both. The SBOM is a separate asset, not
+  inside the zip.
+- Updated `packaging/README.md` with the local dry-run and SBOM sections, a
+  both-file checksum verification snippet, and the signing/unsigned boundary.
+  Updated the launch checklist, `CONTRIBUTING.md`, `README.md`,
+  `docs/architecture.md`, and `docs/security.md` (which no longer implies that
+  no dependency audit exists).
+- Fixed the CLI help text to the factual summary
+  `Native Windows local development stacks - no Docker daemon or VM by default.`
+  and added regression assertions for the old unsupported
+  `fraction of the resources` phrase.
+- Assessed E2 and deferred mdBook: it is not installed, would add another
+  toolchain/CI dependency, needs `SUMMARY.md`, and requires re-verifying every
+  relative link and anchor. The current Markdown renders on the repository host.
+
+**Reliability fixes found by the gate**:
+
+- The first full test run failed
+  `a_failed_health_check_stops_the_daemon_and_leaves_no_state`: the expected
+  `logs/api.log` did not exist. `LogWriter` opened the file lazily on the first
+  line, and the PowerShell fixture could be killed by the 1 s health timeout
+  before printing. The writer now creates the file eagerly (best-effort; a
+  failure is still non-fatal), and the test uses `ping -n 31 127.0.0.1` and
+  waits up to 10 s for the first `[stdout]` line.
+- The second full test run failed
+  `a_fixed_port_conflict_fails_the_second_project_with_a_remedy`: this machine
+  excludes TCP 45064-45163 (Hyper-V/WSL), so the hard-coded 45123-45130
+  candidates all failed to bind. The test now takes a fresh ephemeral port,
+  rechecks it, and retries up to eight times.
+
+**Verification**:
+
+- `cargo fmt --all --check`: green.
+- `cargo clippy --workspace --all-targets -- -D warnings`: green.
+- `cargo test --workspace --all-targets -- --test-threads=1`: **212 passed,
+  0 failed across 23 suites**.
+- `cargo audit`: green with **3 allowed warnings** (`paste` unmaintained;
+  `lru` unsound x2).
+- `cargo deny check --hide-inclusion-graph`: **advisories ok, bans ok,
+  licenses ok, sources ok** (duplicate-version warnings only).
+- `cargo build --workspace --release`: green in 0.41 s (cached).
+- `scripts/release-dry-run.ps1 -SkipBuild`: 4,734,097-byte zip, SHA-256
+  `257f51589cf957a691add88018177fedcb48ff49cee146fed3920a229b50fb61`;
+  CycloneDX 1.5 SBOM, 273,407 bytes, 232 components, local SHA-256
+  `3fa410fc49bd5286e0246e892e9a9e6ea6158728c5694bcd1fa299237d0f231c`
+  (changes each run); packaged binary reports `burrow 0.1.0`.
+- `scripts/release-dry-run.ps1` parses under PowerShell 5.1 and contains no
+  non-ASCII bytes. The script cleans the per-crate SBOM files that
+  cargo-cyclonedx writes.
+- `git diff --check`: clean (line-ending warnings only).
+
+**Cleanup**: the dry-run wrote only under `target\release-dry-run`; all
+generated per-crate SBOM files were removed. No Docker containers, stacks, or
+temp project directories were created. Docker Desktop remains stopped. No
+`burrow`, `ping`, or PowerShell service processes remain.
+
+**Not verified**: no CI run (so the cargo-deny, SBOM, and compatibility steps
+are configured but not executed remotely); no clean machine, Windows 10, ARM64,
+standard-user, OneDrive/UNC, FAT/exFAT, antivirus, `LongPathsEnabled=0`,
+8.3-disabled, or Podman run. No external SBOM schema validator was run; the
+SBOM was generated by cargo-cyclonedx and parsed as JSON. No release, signature,
+winget/Scoop submission, screenshots, or social post exists.
+
+**Next**: a human reviews the release/SBOM/signing steps and decides whether to
+publish. Remaining agent work is the blocked clean-machine/CI verification and
+any post-review docs fixes. Do not write `LAUNCH_READINESS.md` until those and
+the human-only launch steps are resolved.

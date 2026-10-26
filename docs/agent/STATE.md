@@ -2,38 +2,44 @@
 
 ## Current focus
 
-Phase 3-5 launch content is drafted: the sourced comparison, the reproducible
-Docker Compose head-to-head, the demo script, and the launch kit are in place.
-The launch kit is for human review only; no screenshots are committed and
-nothing has been published. Next is packaging, trust, and docs-site work
-(release dry-run zip/checksums, a cargo-deny decision, signing plan,
-winget/Scoop manifests after a human release, E2). Phase 1 still needs a true
-clean-machine pass and a CI execution of the compatibility probe. Do not write
-`docs/agent/LAUNCH_READINESS.md` until those and the human-only launch steps are
-resolved.
+Packaging and trust work is complete for this cycle: the local release dry-run
+builds a zip plus a CycloneDX 1.5 SBOM and verifies both, cargo-deny is enforced
+locally and configured for CI/release, and the signing plan is documented. The
+docs site (E2) was assessed and deferred. What remains is human-only
+(publish/sign/submit/capture) or blocked on this machine (clean-machine pass, a
+remote CI run, Windows 10/ARM64 and other unverified rows). Do not write
+`docs/agent/LAUNCH_READINESS.md` until those are resolved.
 
-## Last cycle summary (2026-10-26, cycle 17)
+## Last cycle summary (2026-10-27, cycle 18)
 
-- **Launch kit completed as drafts**: `docs/launch/README.md` indexes the kit and
-  states the human-only boundary; `announcement.md` has short, long, and Show HN
-  copy; `checklist.md` covers readiness, release, package managers, launch, and
-  post-launch verification; `screenshots.md` has a six-shot plan, capture
-  commands, terminal requirements, and a secret/personal-data check.
-- **Screenshot plan, not screenshots**: no images are committed. Capture needs a
-  clean, non-elevated Windows 11 machine, a neutral checkout path, a 120x30
-  terminal, and a human visual review. The checklist and `NEEDS_HUMAN.md` mark
-  this as a human action.
-- **Demo updated from a live release-binary run**: `docs/demo.md` now shows the
-  `RUNTIME` column in `status`, 11 `doctor` checks including `listeners`, and
-  the 1.84-1.88 s / 10.9-11.0 MB figures. PIDs, ports, and log text remain
-  representative.
-- **Claims fixes**: corrected a broken `troubleshooting.md` anchor; removed the
-  Show HN line that implied Windows 10 support (it now says Windows 11 today,
-  Windows 10 unverified); added the warm-package-cache caveat next to the
-  Compose startup comparison.
-- **Verification**: all local Markdown links and anchors in `docs/launch/` and
-  `docs/demo.md` resolve; `git diff --check` is clean; the raw benchmark JSON is
-  unchanged and valid.
+- **Release dry-run and SBOM**: `scripts/release-dry-run.ps1` now builds,
+  stages, zips, generates `burrow-<tag>-windows-x86_64.cdx.json` with
+  `cargo-cyclonedx 0.5.9`, writes `SHA256SUMS.txt` for both files, extracts the
+  zip, and runs the packaged binary. Local sample: 4,734,097-byte zip,
+  SHA-256 `257f51589cf957a691add88018177fedcb48ff49cee146fed3920a229b50fb61`;
+  SBOM 273,407 bytes with 232 components. The SBOM serial/timestamp change each
+  run, so neither hash is a release hash. The release workflow now installs
+  cargo-cyclonedx and attaches the SBOM.
+- **Dependency policy**: `deny.toml` limits the graph to
+  `x86_64-pc-windows-msvc`, allows permissive licenses and crates.io only, and
+  documents one `paste` ignore. `cargo deny check --hide-inclusion-graph`
+  returned `advisories ok, bans ok, licenses ok, sources ok`. CI and the release
+  workflow install and run cargo-deny.
+- **Docs and claims**: added the local dry-run/SBOM sections to
+  `packaging/README.md`, SBOM steps to the launch checklist, cargo-deny to
+  `CONTRIBUTING.md`, and a release/SBOM note to the README and architecture
+  page. Qualified `docs/security.md`: CI audits the Rust dependency graph, but
+  there is still no runtime sandbox, image scanning, or CVE tracking for
+  downloaded service binaries.
+- **Reliability fixes found by the gate**: a service log file is now created
+  eagerly (best-effort) so a failed service's diagnostic path exists before its
+  first output line; the health-check test waits for `[stdout]` and uses a fast
+  `ping` fixture; the fixed-port test now takes fresh ephemeral ports and
+  retries. The old hard-coded 45123-45130 range is inside this machine's
+  excluded TCP range 45064-45163 (Hyper-V/WSL), so every bind failed.
+- **E2 docs site**: deferred. mdBook is absent and would add a toolchain/CI
+  dependency, a `SUMMARY.md`, and link-rewrite verification; the Markdown docs
+  already render on the repository host and links are checked locally.
 
 ## Benchmark state (2026-10-25 UTC)
 
@@ -54,19 +60,21 @@ resolved.
   `docs/benchmarks/2026-10-25-stacks.json`; method and caveats:
   `docs/benchmarks.md`.
 
-## Check suite status (cycle 17 full run)
+## Check suite status (cycle 18 full run)
 
 - `cargo fmt --all --check`: **green**.
 - `cargo clippy --workspace --all-targets -- -D warnings`: **green**.
 - `cargo test --workspace --all-targets -- --test-threads=1`: **green,
-  211 tests / 23 suites**.
+  212 tests / 23 suites**.
 - `cargo audit`: **green** (3 allowed transitive warnings: `paste`
   unmaintained; `lru` unsound x2).
-- `cargo build --workspace --release`: **green in 0.46 s** (no Rust changes;
-  cached artifacts).
-- Local Markdown links/anchors in `docs/launch/` and `docs/demo.md` validate;
+- `cargo deny check --hide-inclusion-graph`: **green**
+  (`advisories ok, bans ok, licenses ok, sources ok`; duplicate-version
+  warnings only).
+- `cargo build --workspace --release`: **green in 0.41 s** (cached artifacts).
+- `scripts/release-dry-run.ps1`: **green** with the local zip/SBOM/hashes above.
+- `scripts/release-dry-run.ps1` parses under PowerShell 5.1 and is pure ASCII;
   `git diff --check` is clean.
-- `cargo-deny` is still not installed; `cargo audit` is the dependency gate.
 - Fuzz targets are excluded from the workspace; see `fuzz/README.md`.
 
 ## Environment notes
@@ -85,7 +93,10 @@ resolved.
 - Docker Desktop 24.0.7 / Compose v2.23.3-desktop.2 were used for the
   head-to-head on WSL 2 kernel 6.18.54.1-microsoft-standard-WSL2 (16 CPUs,
   7.469 GiB). Docker Desktop is stopped; Podman is absent.
-- cargo-audit 0.22.2 installed locally and working.
+- cargo-audit 0.22.2, cargo-deny 0.20.2, and cargo-cyclonedx 0.5.9 are installed
+  locally.
+- Windows TCP exclusions observed here include 45064-45163; tests must not
+  hard-code ports in an excluded range.
 - Git Bash quirk: `taskkill //PID` on the command line; normal `/PID` args
   inside Rust Command.
 - The cycle-13 quick-start pass used empty Cargo, npm, and Burrow caches, but
@@ -110,6 +121,7 @@ container memory excludes Docker Desktop's VM and daemon. A cold API image build
 was not measured, and measurement order is not randomized. Competitor docs can
 change; the source ledger must be updated with the claim.
 
-Launch assets are drafts: no screenshots are committed, no release exists, and
-every `TODO(human)` placeholder is unresolved. Do not treat the launch kit as a
-published announcement.
+Release assets are still drafts in the sense that nothing is published: no
+release, signature, winget/Scoop submission, or screenshots exist. The local
+dry-run hash is not a release hash. The SBOM is an unsigned CycloneDX inventory,
+not a vulnerability scan or provenance attestation.

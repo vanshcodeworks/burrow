@@ -11,7 +11,7 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | --- | --- | --- |
 | Workspace with the seven product crates plus test-only `burrow-testbin` | `Cargo.toml` members; every workspace build compiles it (CI `cargo build --workspace --release`) | verified |
 | CLI skeleton covering the full command surface | `crates/burrow-cli/tests/cli.rs::help_lists_the_full_command_surface` (all commands asserted) | verified |
-| CI on windows-latest: fmt, clippy `-D warnings`, tests, release artifact, `cargo audit` | `.github/workflows/ci.yml` (verified line-by-line this run); audit job installs cargo-audit | verified |
+| CI on windows-latest: fmt, clippy `-D warnings`, tests, release artifact, `cargo audit`, `cargo deny` | `.github/workflows/ci.yml` (verified line-by-line this run); the audit job installs cargo-audit and cargo-deny and runs both | verified by workflow inspection / gap (no CI run here) |
 | One process in a Job Object with memory cap | `job_lifecycle.rs::enforces_a_job_memory_cap` | verified |
 | Kill-on-close | `job_lifecycle.rs::dropping_a_process_kills_the_whole_tree` | verified |
 | Graceful Ctrl+Break shutdown path | `job_lifecycle.rs::ctrl_break_allows_a_graceful_exit_when_a_console_is_available`, `shutdown_forces_an_unresponsive_process_after_the_grace_period`, `shutdown_terminates_descendants_and_empties_the_job` | verified |
@@ -140,6 +140,19 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | Launch copy does not claim unverified platform or release support | Short and long drafts say Windows 11 x86-64 is verified and Windows 10/ARM64/clean-machine/signed artifacts are not; Show HN says Windows 11 today (Windows 10 unverified); the checklist makes the clean-machine pass and CI probe a gate | verified by review |
 | Screenshots are planned but not committed | `docs/launch/screenshots.md` says no screenshots are committed; capture is a human action with a shot list, 120x30 terminal requirement, and a secret/personal-data check | verified (no images present) |
 | The demo uses the current measured numbers and current `doctor` output | `docs/demo.md` shows 11 ok including `listeners`, the `RUNTIME` column, 1.84-1.88 s, and 10.9-11.0 MB; the status and doctor blocks came from a live release-binary run | verified (one live run; PIDs, ports, and log text are representative) |
+
+## Cycle 18 packaging and dependency policy
+
+| Claim | Evidence | Status |
+| --- | --- | --- |
+| The CLI help text matches the supported product summary | `crates/burrow-cli/tests/cli.rs::help_lists_the_full_command_surface` asserts `no Docker daemon or VM by default` and rejects `fraction of the resources`; `scripts/release-dry-run.ps1` checks the packaged binary's `--help` for the same strings | verified |
+| The dependency policy is enforced locally and configured for CI | `deny.toml` limits the graph to `x86_64-pc-windows-msvc`, allows permissive licenses and crates.io only, and records one `paste` advisory ignore with a reason. `cargo deny check --hide-inclusion-graph` returned `advisories ok, bans ok, licenses ok, sources ok` (duplicate-version warnings only). CI and release workflows install and run cargo-deny | verified locally / gap (CI not executed here) |
+| The local release dry-run produces a verifiable zip | `scripts/release-dry-run.ps1 -SkipBuild`: 4,734,097-byte zip, SHA-256 `257f51589cf957a691add88018177fedcb48ff49cee146fed3920a229b50fb61`, contents exactly `burrow.exe`, `LICENSE-APACHE`, `LICENSE-MIT`, `README.md`; extracted binary reports `burrow 0.1.0`; SHA256SUMS matches. The zip hash was stable across two runs with the same inputs; the SBOM hash changes because its serial number and timestamp change. Both are local-only | observed (two runs on this machine) |
+| The release SBOM is a CycloneDX 1.5 JSON inventory | `cargo-cyclonedx 0.5.9` generated a 273,407-byte JSON file with `bomFormat: CycloneDX`, `specVersion: 1.5`, root component `burrow-cli@0.1.0`, **232 components**, and 233 dependency entries. It parses with PowerShell `ConvertFrom-Json`; no external schema validator was run. The latest local SHA-256 was `3fa410fc49bd5286e0246e892e9a9e6ea6158728c5694bcd1fa299237d0f231c` | observed (generated from `Cargo.lock`; not a vulnerability scan) |
+| The release workflow publishes and hashes the SBOM | `.github/workflows/release.yml` installs cargo-cyclonedx, generates `burrow-<tag>-windows-x86_64.cdx.json`, checks `bomFormat`/`specVersion`, and writes both hashes to `SHA256SUMS.txt`; the release uploads `dist/*` | verified by workflow inspection / gap (no CI run) |
+| The security page does not overstate dependency scanning | `docs/security.md` now says CI runs `cargo audit` and `cargo deny check`, release builds include an SBOM, and there is still no runtime sandbox, image scanning, or CVE tracking for downloaded service binaries | verified by inspection |
+| A failed service leaves a log path that exists | `burrow-supervisor` `logs.rs::open_creates_an_empty_log_file_before_the_first_line` creates the file eagerly; the CLI health-check test waits for the first `[stdout]` line instead of assuming it was flushed | verified |
+| The fixed-port conflict test does not depend on a hard-coded port range | `port_conflict.rs` takes a fresh ephemeral port and retries; this machine excludes TCP 45064-45163 (Hyper-V/WSL), which made the old 45123-45130 range unusable | verified on this machine; CI will use a different range |
 
 ## Gaps found by this audit (queued)
 

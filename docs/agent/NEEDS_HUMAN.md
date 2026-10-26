@@ -3,6 +3,11 @@
 - **Publishing, signing, and package-manager submission** (crates.io, GitHub
   release, winget, Scoop, signing certificates) remain human actions per the
   hard rules. Nothing here publishes, tags, pushes to `main`, or posts.
+- **Release review**: before publishing, review
+  `scripts/release-dry-run.ps1`, `deny.toml`, and the release workflow. Confirm
+  the published release contains the zip, `SHA256SUMS.txt`, and the CycloneDX
+  1.5 SBOM, and that both hashes match. The dry-run's local hash is not a
+  release hash, and the SBOM is unsigned.
 - **Clean-machine, VM, or CI execution**: no VM, Windows Sandbox, or clean CI
   runner is available here. The compatibility probe is configured for CI but has
   not run remotely. Windows 10, ARM64, a true standard-user account,

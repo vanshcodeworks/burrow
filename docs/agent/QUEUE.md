@@ -38,8 +38,9 @@
       and reports image pull/build separately. Podman remains unavailable and is
       documented as unverified.
 - [ ] **Packaging, trust, and docs site**: release dry-run zip/checksums/SBOM
-      (D6), cargo-deny config (D1), signing plan, winget/Scoop manifests with
-      real hashes after a human release, and the docs site (E2). A human
+      (D6) and cargo-deny config (D1) are done; the signing plan is documented
+      in `packaging/README.md`; winget/Scoop manifests still need real hashes
+      after a human release, and the docs site (E2) is deferred. A human
       publishes.
 - [x] **Launch kit drafts**: `docs/launch/README.md`, `announcement.md`,
       `checklist.md`, and `screenshots.md`, plus the updated `docs/demo.md`.
@@ -163,16 +164,28 @@
 
 ## Tier D — trust/release
 
-- [ ] D1 cargo-deny config + SBOM; document signing plan (human action).
+- [x] D1 cargo-deny config + SBOM; document signing plan (human action).
+      `deny.toml` is checked locally and in CI; `cargo-cyclonedx` generates a
+      CycloneDX 1.5 SBOM for the release; the signing secrets and unsigned
+      fallback are documented in `packaging/README.md`. Signing itself remains
+      a human action.
 - [ ] D2 Trust prompt diff on change; `burrow trust` management.
 - [ ] D3 Threat model doc additions; review log.
 - [ ] D5 Semver/config-schema versioning policy.
-- [ ] D6 Release dry-run pipeline (zip + checksums + SBOM locally).
+- [x] D6 Release dry-run pipeline (zip + checksums + SBOM locally).
+      `scripts/release-dry-run.ps1` builds, stages, zips, generates the
+      CycloneDX 1.5 SBOM, writes `SHA256SUMS.txt`, extracts, and verifies the
+      packaged binary. It never tags, signs, uploads, or publishes. The hash is
+      local-only: a rebuild changes the zip and the SBOM identifiers vary.
 
 ## Tier E — docs/examples
 
 - [ ] E1 Examples with smoke tests (Next.js+Postgres, FastAPI+Postgres+Mailpit).
-- [ ] E2 Docs site (mdBook) — defer until content settles.
+- [ ] E2 Docs site (mdBook) - deferred after a cycle-18 assessment. mdBook is
+      not installed here; adding it means another toolchain and CI dependency,
+      a `SUMMARY.md`, and re-verification of every relative link and anchor.
+      The current Markdown renders on the repository host and its links are
+      checked locally. Revisit after the launch docs settle.
 - [x] E3 (Phase 3-5) Benchmark suite vs Docker Compose: `scripts/benchmark-stacks.ps1`
       measured both stacks on 2026-10-25 UTC; raw JSON is
       `docs/benchmarks/2026-10-25-stacks.json`. Podman remains unavailable and
