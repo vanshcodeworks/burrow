@@ -63,5 +63,11 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
       - name: Audit dependencies
         run: cargo audit
+
+      - name: Check dependency policy
+        run: cargo deny check --hide-inclusion-graph

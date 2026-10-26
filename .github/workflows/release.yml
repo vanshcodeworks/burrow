@@ -34,6 +34,15 @@ jobs:
       - name: Test
         run: cargo test --workspace --all-targets -- --test-threads=1
 
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx --locked
+
+      - name: Check dependency policy
+        run: cargo deny check --hide-inclusion-graph
+
       - name: Build release
         run: cargo build --release -p burrow-cli --locked
 
@@ -107,8 +116,37 @@ jobs:
           Copy-Item "README.md", "LICENSE-MIT", "LICENSE-APACHE" $stage
           Compress-Archive -Path (Join-Path $stage "*") -DestinationPath (Join-Path "dist" "$name.zip")
 
-          $hash = (Get-FileHash (Join-Path "dist" "$name.zip") -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  $name.zip" | Set-Content "dist\SHA256SUMS.txt" -Encoding ascii
+          cargo cyclonedx `
+            --manifest-path crates\burrow-cli\Cargo.toml `
+            --format json `
+            --spec-version 1.5 `
+            --target x86_64-pc-windows-msvc `
+            --override-filename "$name.cdx"
+          if ($LASTEXITCODE -ne 0) {
+            throw "cargo-cyclonedx failed with exit code $LASTEXITCODE."
+          }
+          $generated = @(Get-ChildItem "crates" -Recurse -Filter "$name.cdx.json" -File)
+          $cliSbom = $generated |
+            Where-Object { $_.DirectoryName -eq (Resolve-Path "crates\burrow-cli").Path } |
+            Select-Object -First 1
+          if (-not $cliSbom) {
+            throw "cargo-cyclonedx did not create an SBOM for burrow-cli."
+          }
+          Move-Item $cliSbom.FullName "dist\$name.cdx.json"
+          $generated |
+            Where-Object { $_.FullName -ne $cliSbom.FullName } |
+            ForEach-Object { Remove-Item $_.FullName -Force }
+          $bom = Get-Content "dist\$name.cdx.json" -Raw | ConvertFrom-Json
+          if ($bom.bomFormat -ne "CycloneDX" -or $bom.specVersion -ne "1.5") {
+            throw "The generated SBOM is not CycloneDX 1.5."
+          }
+
+          $zipHash = (Get-FileHash (Join-Path "dist" "$name.zip") -Algorithm SHA256).Hash.ToLowerInvariant()
+          $sbomHash = (Get-FileHash (Join-Path "dist" "$name.cdx.json") -Algorithm SHA256).Hash.ToLowerInvariant()
+          @(
+            "$zipHash  $name.zip",
+            "$sbomHash  $name.cdx.json"
+          ) | Set-Content "dist\SHA256SUMS.txt" -Encoding ascii
           Get-Content "dist\SHA256SUMS.txt"
 
       - name: Upload artifact

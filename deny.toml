@@ -1,0 +1,54 @@
+# cargo-deny configuration for Burrow.
+#
+# Run `cargo deny check` from the repository root. This is a local and CI
+# dependency gate in addition to `cargo audit`; it does not publish anything.
+#
+# Burrow publishes Windows x86-64 builds only, so the graph is limited to that
+# target. Target-specific crates for other platforms are not part of the
+# shipped artifact and are not checked here.
+
+[graph]
+targets = ["x86_64-pc-windows-msvc"]
+
+[advisories]
+# paste is transitive through ratatui 0.29.0. There is no safe upgrade in this
+# workspace yet; `cargo audit` reports the same warning. Remove this ignore only
+# after the dependency is upgraded and the warning is gone.
+#
+# The lru informational unsound advisories are reported by `cargo audit`, but
+# cargo-deny does not treat informational advisories as a gate by default.
+ignore = [
+    { id = "RUSTSEC-2024-0436", reason = "paste 1.0.15 is transitive via ratatui 0.29.0; no safe upgrade in this workspace; tracked in QUEUE.md" },
+]
+
+[licenses]
+# Permissive licenses only. The workspace itself is MIT OR Apache-2.0.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "0BSD",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "Unlicense",
+]
+confidence-threshold = 0.8
+
+[bans]
+# Duplicate versions are visible but do not fail the gate. Wildcards are
+# allowed because the workspace uses unversioned internal path dependencies;
+# external dependencies are pinned through Cargo.lock.
+multiple-versions = "warn"
+wildcards = "allow"
+
+[sources]
+# Only crates.io is allowed. Add a git source only after reviewing it.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
