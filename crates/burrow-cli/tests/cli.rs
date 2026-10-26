@@ -121,6 +121,8 @@ fn help_lists_the_full_command_surface() {
     let output = burrow().arg("--help").output().expect("run burrow");
     assert!(output.status.success());
     let text = stdout(&output);
+    assert!(text.contains("no Docker daemon or VM by default"));
+    assert!(!text.contains("fraction of the resources"));
     for command in [
         "init",
         "up",
@@ -707,7 +709,7 @@ fn daemon_lifecycle_covers_status_logs_auth_restart_and_down() {
 fn a_failed_health_check_stops_the_daemon_and_leaves_no_state() {
     let project = TestProject::new(
         "[project]\nname = \"sick\"\n\n[services.api]\n\
-         run = 'powershell -NoProfile -NonInteractive -Command \"Write-Output starting; Start-Sleep -Seconds 30\"'\n\
+         run = 'ping -n 31 127.0.0.1'\n\
          port = \"auto\"\n\
          health = { tcp = true, timeout = \"1s\", interval = \"100ms\", retries = 3 }\n",
     );
@@ -726,9 +728,23 @@ fn a_failed_health_check_stops_the_daemon_and_leaves_no_state() {
     );
     assert!(!project.state_path().exists());
 
-    let log = fs::read_to_string(project.burrow_dir().join("logs").join("api.log"))
-        .expect("service log exists");
-    assert!(log.contains("[stdout]"), "log was:\n{log}");
+    // The daemon may still be finishing shutdown when `up` returns. Wait
+    // briefly for the forwarder to flush the first line.
+    let log_path = project.burrow_dir().join("logs").join("api.log");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Ok(log) = fs::read_to_string(&log_path) {
+            if log.contains("[stdout]") {
+                break;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "service log was not written: {}",
+            log_path.display()
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 #[test]

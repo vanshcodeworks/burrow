@@ -1,13 +1,13 @@
 //! Adversarial end-to-end test: two projects fighting over one fixed port.
 //!
 //! Two Burrow projects running at the same time must not share ports. A fixed
-//! port (`port = 45123`) is validated as free before anything starts, so the
-//! second project with the same fixed port must fail with an actionable
-//! remedy, start nothing, leave no state behind, and leave the first project
-//! untouched. Windows only, like the rest of Burrow.
+//! port chosen from a fresh ephemeral bind is validated as free before anything
+//! starts, so the second project with the same fixed port must fail with an
+//! actionable remedy, start nothing, leave no state behind, and leave the first
+//! project untouched. Windows only, like the rest of Burrow.
 
 use std::fs;
-use std::net::TcpStream;
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
@@ -118,21 +118,18 @@ fn fixed_port_config(name: &str, port: u16) -> String {
     )
 }
 
-/// First fixed-port candidate tried for project A.
-const FIRST_CANDIDATE: u16 = 45_123;
-/// Candidates tried: 45123..=45130.
-const CANDIDATE_COUNT: u16 = 8;
-
 #[test]
 fn a_fixed_port_conflict_fails_the_second_project_with_a_remedy() {
-    // The fixed port must be genuinely free before project A claims it. Probe
-    // each candidate with the same check the daemon uses, then prove the
-    // daemon accepted it by starting A; a candidate snatched by an unrelated
-    // process between the two is skipped, so the test never fails because of
-    // the machine it runs on.
+    // Use a fresh ephemeral port rather than a hard-coded range: Windows can
+    // exclude ranges (for example Hyper-V/WSL reservations) where every bind
+    // fails, which is not a conflict Burrow can fix. Retry if another process
+    // claims the port between the probe and project A's start.
     let mut claimed = None;
     let mut last_conflict = String::new();
-    for candidate in FIRST_CANDIDATE..FIRST_CANDIDATE + CANDIDATE_COUNT {
+    for _ in 0..8 {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind ephemeral");
+        let candidate = listener.local_addr().expect("ephemeral address").port();
+        drop(listener);
         if !burrow_net::is_free(candidate) {
             continue;
         }
@@ -161,9 +158,7 @@ fn a_fixed_port_conflict_fails_the_second_project_with_a_remedy() {
     }
     let (project_a, port) = claimed.unwrap_or_else(|| {
         panic!(
-            "every candidate fixed port {FIRST_CANDIDATE}-{} was taken by unrelated \
-             processes; last conflict:\n{last_conflict}",
-            FIRST_CANDIDATE + CANDIDATE_COUNT - 1
+            "could not claim an ephemeral fixed port after 8 attempts; last conflict:\n{last_conflict}"
         )
     });
 
@@ -219,9 +214,13 @@ fn a_fixed_port_conflict_fails_the_second_project_with_a_remedy() {
 
     // The failure was purely the collision: the same project B starts once its
     // config pins a different, currently free fixed port.
-    let other = (FIRST_CANDIDATE..FIRST_CANDIDATE + CANDIDATE_COUNT)
-        .find(|&candidate| candidate != port && burrow_net::is_free(candidate))
-        .expect("no second candidate port was free");
+    let other = {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind ephemeral");
+        let candidate = listener.local_addr().expect("ephemeral address").port();
+        drop(listener);
+        assert_ne!(candidate, port, "the OS reused project A's port");
+        candidate
+    };
     fs::write(
         project_b.path().join("burrow.toml"),
         fixed_port_config("port-b", other),
