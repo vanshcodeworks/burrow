@@ -171,7 +171,10 @@ competitor was run.
   and logs.
 - Full-directory snapshots, restore with rollback, snapshot listing, and reset.
 - Unit and integration tests across the workspace, plus a `windows-latest` CI
-  workflow for rustfmt, clippy, tests, release builds, and `cargo audit`.
+  workflow for rustfmt, clippy, tests, release builds, `cargo audit`, and
+  `cargo deny`.
+- A local release dry-run that builds, zips, checksums, and verifies the binary
+  and a CycloneDX 1.5 SBOM; publishing remains a human action.
 
 ## Commands
 

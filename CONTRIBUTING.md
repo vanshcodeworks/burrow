@@ -26,6 +26,25 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets -- --test-threads=1
 ```
 
+CI also runs `cargo audit` and `cargo deny check` in a separate job. If you
+changed dependencies, install both tools and run the same checks locally:
+
+```powershell
+cargo install cargo-audit --locked
+cargo install cargo-deny --locked
+cargo audit
+cargo deny check --hide-inclusion-graph
+```
+
+The dependency policy is in [`deny.toml`](deny.toml). It allows only
+permissive licenses, only crates.io sources, and records the known `paste`
+advisory with a reason. Do not add an ignore without a comment and a follow-up.
+
+Release staging can be rehearsed locally with
+`.\scripts\release-dry-run.ps1`; it requires `cargo-cyclonedx`, produces the zip
+and SBOM under `target\release-dry-run`, and never publishes. See
+[`packaging/README.md`](packaging/README.md).
+
 The supervisor integration tests spawn the test-only `burrow-testbin` binary,
 which is a binary target inside the `burrow-supervisor` package. Cargo builds it
 automatically for `cargo test -p burrow-supervisor` (and for the workspace test

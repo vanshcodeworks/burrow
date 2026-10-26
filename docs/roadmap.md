@@ -11,7 +11,7 @@ repository; CI results are the authority on whether a revision is green.
 - [x] `burrow` CLI skeleton covering the full command surface, with clean
       "not implemented yet" errors for later milestones
 - [x] CI on `windows-latest`: rustfmt, clippy (`-D warnings`), tests, release
-      build artifact, and `cargo audit`
+      build artifact, `cargo audit`, and `cargo deny`
 - [x] Supervisor core: one process in a Job Object with a memory cap,
       kill-on-close, and a graceful Ctrl+Break shutdown path
 - [x] Orphan-free shutdown integration tests using a real child process

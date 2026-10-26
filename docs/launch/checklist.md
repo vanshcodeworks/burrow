@@ -10,6 +10,7 @@ happens. Never invent a release URL, version, or hash.
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings` is green.
 - [ ] `cargo test --workspace --all-targets -- --test-threads=1` is green.
 - [ ] `cargo audit` is green, or every warning is reviewed and documented.
+- [ ] `cargo deny check --hide-inclusion-graph` is green.
 - [ ] `cargo build --workspace --release` is green.
 - [ ] A true clean-machine or clean-VM pass succeeds from a fresh checkout.
       This is still blocked here; see `docs/agent/NEEDS_HUMAN.md`.
@@ -26,6 +27,10 @@ happens. Never invent a release URL, version, or hash.
 ## 2. Build and verify the release (human)
 
 - [ ] From a clean checkout at the release commit, run the full gate above.
+- [ ] Rehearse the staging locally with `.\scripts\release-dry-run.ps1`. It
+      builds, zips, checksums, extracts, and runs the packaged binary without
+      tagging, signing, uploading, or publishing. Its hash is local-only and
+      must not be used in manifests or release notes.
 - [ ] Build the release binary:
 
   ```powershell
@@ -36,16 +41,20 @@ happens. Never invent a release URL, version, or hash.
 - [ ] Stage the same files as `.github/workflows/release.yml`: `burrow.exe`,
       `README.md`, `LICENSE-MIT`, and `LICENSE-APACHE`.
 - [ ] Create the zip named `burrow-<tag>-windows-x86_64.zip`.
-- [ ] Write `SHA256SUMS.txt` with the zip hash.
+- [ ] Generate `burrow-<tag>-windows-x86_64.cdx.json` with
+      `cargo-cyclonedx` (`--format json --spec-version 1.5 --target
+      x86_64-pc-windows-msvc`); confirm it parses and names `burrow-cli`.
+- [ ] Write `SHA256SUMS.txt` with the zip hash and the SBOM hash.
 - [ ] Optionally sign `burrow.exe` with the repository secrets. If no
       certificate is configured, record that the artifact is unsigned. Do not
       describe an unsigned build as signed.
 - [ ] Extract the zip into a fresh directory and run the binary there.
+- [ ] Verify both the zip and the SBOM against `SHA256SUMS.txt`.
 - [ ] On a clean, non-elevated account, run `burrow init`, `burrow doctor`, and
       the `examples/node-postgres` quick start. Record the real result.
 - [ ] Verify the artifact contains no `.burrow` data, secrets, logs, crash
       notes, or local paths beyond the intended README/licenses.
-- [ ] Record the real hash, size, and signer status in the release notes.
+- [ ] Record the real hashes, sizes, and signer status in the release notes.
 
 ## 3. Publish (human only)
 
@@ -53,9 +62,10 @@ happens. Never invent a release URL, version, or hash.
       rewrite an existing tag.
 - [ ] Run the release workflow (or the manual dispatch) and wait for it to
       succeed.
-- [ ] Download the published zip and `SHA256SUMS.txt`; recompute the hash and
-      compare it. Do not trust the workflow log alone.
+- [ ] Download the published zip, SBOM, and `SHA256SUMS.txt`; recompute both
+      hashes and compare them. Do not trust the workflow log alone.
 - [ ] Run `burrow --version` from the downloaded artifact.
+- [ ] Confirm the published SBOM is CycloneDX 1.5 JSON and names `burrow-cli`.
 - [ ] Publish the GitHub release with the verified assets. Keep the generated
       notes or replace them with the reviewed announcement copy.
 - [ ] If the release is bad, mark it as a pre-release or remove the asset and

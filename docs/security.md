@@ -322,8 +322,10 @@ Be explicit about the boundary:
   relies on the filesystem ACL to keep other accounts out. It does not add one.
 - **Network attackers.** The proxy has no TLS or authentication, and `expose`
   widens its bind address. Service ports may already be exposed independently.
-- **Vulnerabilities in upstream binaries or your own dependencies.** There is no
-  sandbox, no image scanning, and no CVE tracking.
+- **Vulnerabilities in upstream binaries or your own dependencies.** CI runs
+  `cargo audit` and `cargo deny check` against the Rust dependency graph, and
+  release builds include a CycloneDX SBOM, but there is no runtime sandbox,
+  image scanning, or CVE tracking for downloaded service binaries.
 - **Data safety.** Snapshots are plain directory copies, not database-consistent
   backups. Stop services before copying. See the
   [CLI data-command notes](cli.md#data-commands).

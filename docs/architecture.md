@@ -339,7 +339,11 @@ limitations: [ADR 0005](decisions/0005-container-fallback.md).
   container round trip that skips when no engine responds.
 - CI on `windows-latest` runs rustfmt, clippy (`-D warnings`), the workspace test
   suite, and a release build, then uploads `burrow.exe`. A separate job runs
-  `cargo audit`.
+  `cargo audit` and `cargo deny check`.
+- The release workflow runs `cargo deny check`, builds with `--locked`, generates
+  a CycloneDX 1.5 SBOM with `cargo-cyclonedx`, and hashes both the zip and the
+  SBOM. `scripts/release-dry-run.ps1` rehearses that locally without tagging,
+  signing, or publishing.
 - `scripts/check.ps1` mirrors the format, clippy, and test checks locally.
 
 ## Resource limits are not a security boundary

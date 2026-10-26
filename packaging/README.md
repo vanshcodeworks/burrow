@@ -14,14 +14,15 @@ The files in this directory are drafts:
   The manifests will not install anything until those values are filled from a
   real release.
 
-The only install path that works today is from a checkout:
+The only supported install path today is from a checkout:
 
 ```powershell
 cargo install --path crates\burrow-cli --locked
 ```
 
 `cargo install` builds with the release profile and places `burrow.exe` in
-`%USERPROFILE%\.cargo\bin`.
+`%USERPROFILE%\.cargo\bin`. A zip produced by the local dry-run below also
+runs, but it is not a published release.
 
 ## Release artifacts
 
@@ -29,12 +30,15 @@ The [`release` workflow](../.github/workflows/release.yml) runs on a `v*` tag or
 by manual dispatch. It:
 
 1. Runs the workspace test suite.
-2. Builds `burrow-cli` in release mode with `--locked`.
-3. Optionally signs `burrow.exe` when signing secrets are configured.
-4. Stages `burrow.exe`, `README.md`, `LICENSE-MIT`, and `LICENSE-APACHE`.
-5. Produces `burrow-<tag>-windows-x86_64.zip`.
-6. Writes `SHA256SUMS.txt` with the SHA-256 of the zip.
-7. Uploads the files as a workflow artifact and attaches them to a GitHub
+2. Checks the dependency policy with `cargo deny check`.
+3. Builds `burrow-cli` in release mode with `--locked`.
+4. Optionally signs `burrow.exe` when signing secrets are configured.
+5. Stages `burrow.exe`, `README.md`, `LICENSE-MIT`, and `LICENSE-APACHE`.
+6. Produces `burrow-<tag>-windows-x86_64.zip`.
+7. Generates a CycloneDX 1.5 SBOM named
+   `burrow-<tag>-windows-x86_64.cdx.json` with `cargo-cyclonedx`.
+8. Writes `SHA256SUMS.txt` with the SHA-256 of the zip and the SBOM.
+9. Uploads the files as a workflow artifact and attaches them to a GitHub
    release.
 
 No signing certificate is configured for this repository, so current release
@@ -50,13 +54,57 @@ store and calls `signtool` with a DigiCert timestamp URL. If the secrets are
 absent, the workflow prints that it is publishing an unsigned build and
 continues. It never invents a signature.
 
-Verify a downloaded zip against `SHA256SUMS.txt` before extracting:
+Verify every downloaded file against `SHA256SUMS.txt` before extracting:
 
 ```powershell
-$expected = (Get-Content .\SHA256SUMS.txt).Split()[0]
-$actual = (Get-FileHash .\burrow-v0.1.0-windows-x86_64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($actual -ne $expected) { throw "checksum mismatch" }
+Get-Content .\SHA256SUMS.txt | ForEach-Object {
+    $expected, $name = $_ -split '\s+', 2
+    $actual = (Get-FileHash ".\$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) { throw "checksum mismatch: $name" }
+}
 ```
+
+The zip is the first line, so the winget and Scoop instructions below can still
+use the first hash.
+
+## Local dry-run
+
+[`scripts/release-dry-run.ps1`](../scripts/release-dry-run.ps1) mirrors the
+release staging steps without tagging, signing, uploading, or publishing
+anything:
+
+```powershell
+.\scripts\release-dry-run.ps1
+```
+
+It builds `burrow-cli` with `--locked`, stages the same four files as the
+release workflow, creates `burrow-<tag>-windows-x86_64.zip`, generates the
+CycloneDX 1.5 SBOM with `cargo-cyclonedx`, writes `SHA256SUMS.txt` for both
+files, extracts the archive, checks the zip contents and checksums, and runs
+the packaged binary's `--version` and `--help`. Output goes to
+`target\release-dry-run` by default; use `-OutputDir` to change it or
+`-SkipBuild` to reuse `target\release\burrow.exe`.
+
+`cargo-cyclonedx` is required unless you pass `-SkipSbom`; install it with:
+
+```powershell
+cargo install cargo-cyclonedx --locked
+```
+
+The hash printed by a dry-run is **local only**. A rebuild can change the zip,
+and the SBOM's serial number and timestamp change on every generation, so do
+not paste these hashes into the winget or Scoop manifests, a release
+announcement, or any public claim. Only a hash from the published release's
+`SHA256SUMS.txt` is valid there.
+
+## SBOM
+
+Release builds include a CycloneDX 1.5 JSON SBOM generated from `Cargo.lock` by
+`cargo-cyclonedx 0.5.9`. It describes `burrow-cli`, its workspace crates, and
+the transitive Rust dependencies for `x86_64-pc-windows-msvc`. It is a
+dependency inventory, not a vulnerability scan or a signed attestation. The
+SBOM is published as a separate asset and hashed in `SHA256SUMS.txt`; it is not
+inside the zip.
 
 ## Filling the winget draft
 
@@ -103,3 +151,5 @@ and Scoop manifest must all use the same tag and hash.
 - No machine-wide installation or Windows service.
 - No package published to crates.io; the workspace sets `publish = false`.
 - No signed artifact until a certificate is configured.
+- No signed SBOM or provenance attestation; the CycloneDX file is an unsigned
+  JSON asset.
