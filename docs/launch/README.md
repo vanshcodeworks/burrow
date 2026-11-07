@@ -27,8 +27,8 @@ from a checkout.
   comparison is documentation-based. Do not add numbers for other tools.
 - Do not claim a clean-machine pass, Windows 10 support, ARM64 support, or
   signed artifacts. Those remain unverified or human-only.
-- Replace every `TODO(human)` placeholder only after the corresponding release
-  or verification step actually happens.
+- The repository URL is filled in. Replace the install section only after a
+  real release exists, and never invent a release URL, hash, or version.
 
 ## Human-only actions
 

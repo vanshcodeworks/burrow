@@ -89,8 +89,8 @@ happens. Never invent a release URL, version, or hash.
       non-elevated Windows 11 machine. Do not fabricate or edit terminal output.
 - [ ] Review [`announcement.md`](announcement.md) and [`../demo.md`](../demo.md)
       for accuracy, tone, and the current benchmark numbers.
-- [ ] Replace every `TODO(human)` in the announcement with the real repository
-      URL and, if a release exists, the real release URL and hash.
+- [ ] Confirm the announcement points at the real repository URL and, if a
+      release exists, the real release URL and hash.
 - [ ] Re-read the "What it is not" section. Keep the Docker/sandbox/production
       boundaries.
 - [ ] Have a second person review the claims if possible.

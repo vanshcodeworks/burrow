@@ -1,9 +1,8 @@
 # Announcement drafts
 
 **Draft only.** Do not post until a human has reviewed the copy and the release
-checklist is complete. Replace every `TODO(human)` after the real release or
-verification exists. Do not add a download URL, hash, or version that has not
-been published.
+checklist is complete. The repository URL is filled in; do not add a download
+URL, hash, or version that has not been published.
 
 ## One line
 
@@ -142,12 +141,13 @@ comparisons are documentation-based.
 There is no signed installer yet, so the current path is `cargo install --path
 crates\burrow-cli --locked` from a checkout. I would especially value Windows 10
 and ARM64 results, Podman parity checks, and honest feedback on where the
-native-process model is the wrong tool. Source and docs: `TODO(human)`.
+native-process model is the wrong tool. Source and docs:
+<https://github.com/vanshcodeworks/burrow>.
 
 ## Channel notes
 
-- Do not post the Show HN draft without a public repository URL and a working
-  install path. Replace `TODO(human)` first.
+- The repository is public; confirm the URL and the source install path before
+  posting.
 - If a signed release exists, replace the install section with the real release
   URL and hash from `SHA256SUMS.txt`. Do not invent either.
 - Keep the benchmark caveats in the post. Do not shorten them into a claim that
