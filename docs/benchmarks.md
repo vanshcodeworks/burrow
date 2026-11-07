@@ -77,7 +77,8 @@ Startup is wall-clock time from launching the stack until
 means no application data (empty Compose volume, or no `.burrow` data for
 Burrow); "warm" means the data directory or volume is retained. Package and
 image caches are warm in every row, and image pull/build is excluded from
-startup.
+startup. The raw JSON records absolute paths from the benchmark machine as
+metadata; they are not part of the measurements.
 
 | Scenario | Burrow to HTTP 200 | Docker Compose to HTTP 200 |
 | --- | ---: | ---: |

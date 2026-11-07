@@ -15,6 +15,10 @@
       unknown CLI services list valid names; a missing snapshot points to
       `burrow snapshots`; bad command, health timeout, and port conflict were
       probed and are actionable with clean teardown.
+- [x] **Diagnostic test CI fixture**: the bundle test now uses the actual
+      temporary project directory from `tempfile` instead of a hardcoded path
+      under the local user profile, so redaction works on any CI runner.
+      Fixed in cycle 20.
 - [ ] **True clean-machine pass**: a VM, Windows Sandbox, or clean CI runner
       with no pre-installed toolchain, including a standard-user account and
       Windows 10. Blocked: none available on this machine.
@@ -44,10 +48,10 @@
       publishes.
 - [x] **Launch kit drafts**: `docs/launch/README.md`, `announcement.md`,
       `checklist.md`, and `screenshots.md`, plus the updated `docs/demo.md`.
-      Announcement copy uses only measured or documented claims and keeps a
-      `TODO(human)` for the unpublished repository URL. The screenshot plan is
-      complete, but the actual capture is a human action tracked in
-      `NEEDS_HUMAN.md`. Drafts only; a human posts.
+      Announcement copy uses only measured or documented claims and now points at
+      the public repository URL. The screenshot plan is complete, but the actual
+      capture is a human action tracked in `NEEDS_HUMAN.md`. Drafts only; a human
+      posts.
 
 ## Tier A - verification and hardening
 

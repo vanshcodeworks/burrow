@@ -979,3 +979,130 @@ winget/Scoop submission, screenshots, or social post exists.
 publish. Remaining agent work is the blocked clean-machine/CI verification and
 any post-review docs fixes. Do not write `LAUNCH_READINESS.md` until those and
 the human-only launch steps are resolved.
+
+## 2026-11-07 - cycle 19: public launch, animated README, and history privacy
+
+**Task**: Make Burrow a polished public repository: a scope-first animated
+README, real repository URLs instead of placeholders, `main` as the default
+branch, and a public visibility switch without exposing the maintainer's private
+email.
+
+**What changed**:
+
+- Rebuilt `README.md` around scope. It opens with an animated hero and a one-line
+  pitch, then covers why, scope (built for vs not built for), quick start, what
+  you get, architecture, measured performance, fair comparison, commands, trust,
+  compatibility, limitations, documentation, development, and license. Every
+  product claim remains measured or documented; no competitor performance was
+  added beyond the existing Docker Compose run.
+- Added three self-contained SVG assets under `docs/assets/`: `burrow-hero.svg`,
+  `burrow-demo.svg`, and `burrow-architecture.svg`. They use CSS/SMIL animation
+  and inline gradients only, with no external image service. The terminal demo is
+  built from the documented demo script and is captioned as illustrative.
+- Filled the real repository URL into the README clone command, CI badge, winget
+  and Scoop drafts, `SECURITY.md`, `CODE_OF_CONDUCT.md`, and the launch
+  announcement. The winget manifest is now `vanshcodeworks.Burrow.yaml`; only
+  `REPLACE_WITH_SHA256` remains in both package manifests.
+- Rewrote the existing 76-commit history from `vanshgoyal000
+  <vanshgoyal9528@gmail.com>` to `Vansh Goyal
+  <135618994+vanshcodeworks@users.noreply.github.com>` with `git filter-branch`,
+  then force-pushed `agent/work`. Created `main` from the rewritten tip, pushed
+  it, and set it as the default branch. The repository was made public only after
+  the rewritten history was verified. Local `pre-rewrite-backup` and
+  `refs/original/` rollback refs were removed after the remote was verified.
+- Set the repository description and topics, and verified that GitHub renders the
+  README with 8 images, 6 tables, and 14 H2 sections. All three SVG assets return
+  HTTP 200 from `raw.githubusercontent.com`.
+- Sanitized the remaining personal path in the diagnostic test fixture
+  (`C:\Users\Asus` -> `C:\Users\example`) and in `STATE.md`; the raw benchmark
+  JSON keeps its original absolute paths and `docs/benchmarks.md` now states that
+  those paths are machine metadata, not measurements.
+
+**Commands and real results**:
+
+- `cargo fmt --all --check`: green.
+- `cargo clippy --workspace --all-targets -- -D warnings`: green.
+- `cargo test --workspace --all-targets -- --test-threads=1`: **212 passed,
+  0 failed across 23 suites**.
+- `cargo audit`: exit 0 with **3 allowed warnings** (`paste` unmaintained;
+  `lru` unsound x2). The run also logged transient "couldn't check if the package
+  is yanked" timeouts while updating the registry; no vulnerability was reported.
+- `cargo deny check --hide-inclusion-graph`: **advisories ok, bans ok, licenses
+  ok, sources ok** (duplicate-version warning only).
+- Markdown link checker: **58 files, 169 links, 0 missing**.
+- GitHub Markdown API render: 8 images, 6 tables, 14 H2 sections; hero, demo,
+  and architecture paths present.
+- `git diff --check`: clean.
+- Remote CI on `main`: pending at the time of this entry; the local gate above is
+  the source of the recorded numbers.
+
+**Cleanup**: no stacks, containers, or service processes were created. The
+rewrite used only local Git refs; the remote now contains the rewritten history.
+`target/cycle19-gate/` holds the gate logs. The public repository has no release,
+tag, signature, package submission, screenshot, or social post.
+
+**Not verified**: the remote CI result, a clean machine, Windows 10, ARM64, a true
+standard-user account, OneDrive/UNC, FAT/exFAT, corporate antivirus,
+`LongPathsEnabled=0`, 8.3-disabled volumes, and Podman parity. The animated SVGs
+were rendered locally in Edge and served by GitHub, but no screen-reader or
+reduced-motion pass was run.
+
+**Next**: wait for the remote CI result, record it, and leave the human-only
+release, signing, package-manager, screenshot, and social steps to a human.
+
+## 2026-11-07 - cycle 20: Hallmark Furrow README redesign and CI test fix
+
+**Task**: Rewrite the README with the Hallmark Furrow design system (warm manila
+paper, near-black ink, tangerine signal, grass green) and fix the diagnostic
+test fixture that used a hardcoded local user path.
+
+**What changed**:
+
+- Replaced the blue-palette, AI-tone README with a Furrow-styled version. Quick
+  start leads; structure is scope, what you get, architecture, measured
+  performance, fair comparison, commands, safety and trust, compatibility,
+  limitations, documentation, development, license. No em/en dashes, no
+  middle-dot strings, no badge row, no AI clichés ("seamless", "effortless",
+  "supercharge", "game-changer", "unlock", "leverage", "robust", "holistic",
+  "best-in-class").
+- Single animated architecture diagram at `docs/assets/burrow-architecture.svg`
+  redesigned in the Furrow palette (paper `#f5f1ea` / `#fffdfa`, ink `#14110f`,
+  muted `#58514c`, rule `#dbd7ce`, accent `#fc6b33`, green `#246e3a`, contour
+  `#a67c5c`). One-time reveal with CSS `animation` and a
+  `prefers-reduced-motion` media query fallback. No gradients over three stops,
+  no cyan-on-dark, no purple-blue, no glow/spotlights, no eyebrow labels, no
+  tracked caps, no fake terminal/browser frames, no decorative status dots, no
+  infinite loops.
+- Deleted `docs/assets/burrow-hero.svg` (animated hero) and
+  `docs/assets/burrow-demo.svg` (fake terminal frame).
+- Fixed `crates/burrow-cli/src/diagnostic.rs` test fixture: the bundle test now
+  uses the actual temporary project directory from `tempfile` instead of the
+  hardcoded `C:\Users\example\AppData\Local\Temp\shop`. This makes redaction
+  work on any CI runner.
+- Updated README references to point only at the single architecture diagram.
+
+**Commands and real results**:
+
+- `cargo fmt --all --check`: green.
+- `cargo clippy --workspace --all-targets -- -D warnings`: green.
+- `cargo test --workspace --all-targets -- --test-threads=1`: **212 passed,
+  0 failed across 23 suites** (diagnostic tests all pass).
+- `cargo audit`: exit 0 with **3 allowed warnings** (`paste` unmaintained;
+  `lru` unsound x2).
+- `cargo deny check --hide-inclusion-graph`: **advisories ok, bans ok, licenses
+  ok, sources ok** (duplicate-version warning only).
+- `xmllint` / PowerShell `[xml]` validation: SVG well-formed.
+
+**Cleanup**: no stacks, containers, or service processes created. The SVG is a
+single self-contained file served by GitHub. The diagnostic test now passes on
+any machine with a temp directory.
+
+**Not verified**: the remote CI result after this push, a clean machine, Windows
+10, ARM64, a true standard-user account, OneDrive/UNC, FAT/exFAT, corporate
+antivirus, `LongPathsEnabled=0`, 8.3-disabled volumes, and Podman parity. The
+animated SVG was validated as well-formed XML; no screen-reader or
+reduced-motion manual pass was run.
+
+**Next**: watch the new CI run on `main` (triggered by the push to `agent/work`
+then merged), record the result, and leave the human-only release, signing,
+package-manager, screenshot, and social steps to a human.

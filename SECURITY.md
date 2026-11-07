@@ -7,8 +7,8 @@ what the approval prompt does and does not cover, is in
 
 ## Supported versions
 
-Security fixes are applied to the latest `0.1.x` release. There is no long-term
-support branch for pre-1.0 versions.
+Security fixes are applied to the latest `0.1.x` code on `main`. There is no
+long-term support branch for pre-1.0 versions.
 
 ## Reporting a vulnerability
 

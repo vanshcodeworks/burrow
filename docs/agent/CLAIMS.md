@@ -72,7 +72,7 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 | Two runnable examples | `examples/node-postgres`, `examples/python-postgres` with READMEs; node example exercised during phase-2 registry work (healthy); **no automated example smoke test in CI** | observed (gap queued E1) |
 | Full user documentation | `docs/`: getting-started, config-reference, registry, security, troubleshooting, FAQ, CLI, demo — updated this run for phase 2 | verified |
 | Release pipeline, `cargo install` support, winget/Scoop drafts | `.github/workflows/release.yml` + `packaging/`; README documents `cargo install --path ... --locked` (used to build locally during this run, equivalent source build); winget manifest is a draft placeholder by design | verified (drafts marked as drafts) |
-| README with only measured claims | "about two seconds" warm start ↔ 1.84-1.88 s measured; 373,254,386 bytes ↔ builtin test. The unsupported "fraction of the resources" headline stays replaced with a factual native-services statement; the fair-comparison table now uses measured Compose figures (warm 1.92-3.20 s, container memory 37.2-62.1 MB) with the not-like-for-like caveat | verified |
+| README with only measured claims | "about two seconds" warm start ↔ 1.84-1.88 s measured; 356 MB ↔ builtin test. The unsupported "fraction of the resources" headline stays replaced with a factual native-services statement; the fair-comparison table now uses measured Compose figures (warm 1.92-3.20 s, container memory 37.2-62.1 MB) with the not-like-for-like caveat. The README now uses the Hallmark Furrow design system (warm manila paper, near-black ink, tangerine signal, grass green) with one animated architecture diagram and no decorative hero or fake terminal SVG. | verified |
 
 ## Phase 2
 
@@ -136,7 +136,7 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 
 | Claim | Evidence | Status |
 | --- | --- | --- |
-| Launch copy uses only measured or documented product claims | `docs/launch/announcement.md` cites 1.84-1.88 s, 1.92-3.20 s, 4.11 s vs 10.7 s, and 10.9-11.0 MB vs 37.2-62.1 MB, with the benchmark caveats; the only unresolved source is `TODO(human)`; no release URL, version, or hash is claimed | verified by review |
+| Launch copy uses only measured or documented product claims | `docs/launch/announcement.md` cites 1.84-1.88 s, 1.92-3.20 s, 4.11 s vs 10.7 s, and 10.9-11.0 MB vs 37.2-62.1 MB, with the benchmark caveats; the repository URL is filled in; no release URL, version, or hash is claimed | verified by review |
 | Launch copy does not claim unverified platform or release support | Short and long drafts say Windows 11 x86-64 is verified and Windows 10/ARM64/clean-machine/signed artifacts are not; Show HN says Windows 11 today (Windows 10 unverified); the checklist makes the clean-machine pass and CI probe a gate | verified by review |
 | Screenshots are planned but not committed | `docs/launch/screenshots.md` says no screenshots are committed; capture is a human action with a shot list, 120x30 terminal requirement, and a secret/personal-data check | verified (no images present) |
 | The demo uses the current measured numbers and current `doctor` output | `docs/demo.md` shows 11 ok including `listeners`, the `RUNTIME` column, 1.84-1.88 s, and 10.9-11.0 MB; the status and doctor blocks came from a live release-binary run | verified (one live run; PIDs, ports, and log text are representative) |

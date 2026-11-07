@@ -1,52 +1,10 @@
-<div align="center">
-  <img src="docs/assets/burrow-hero.svg" alt="Burrow - native Windows local development stacks" width="100%">
+# Burrow
 
-  <p>
-    <a href="https://github.com/vanshcodeworks/burrow/actions/workflows/ci.yml"><img src="https://github.com/vanshcodeworks/burrow/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
-    <img src="https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4?style=flat-square" alt="Platform: Windows 11 x64">
-    <img src="https://img.shields.io/badge/rust-1.85%2B-dea584?style=flat-square&amp;logo=rust" alt="Rust 1.85+">
-    <img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue?style=flat-square" alt="License: MIT OR Apache-2.0">
-    <img src="https://img.shields.io/badge/telemetry-none-success?style=flat-square" alt="No telemetry">
-  </p>
-
-  <h3>Your local stack, as native Windows processes.</h3>
-  <p>One <code>burrow.toml</code>. Stable ports. Health-gated startup. Logs, snapshots, and a live dashboard.<br>No Docker daemon or VM by default.</p>
-</div>
-
-## Why Burrow
-
-Containers are the right tool when you need a Linux userspace, a reproducible base image, or a hard isolation boundary. They are a heavy way to run a Node API and PostgreSQL on Windows.
-
-Burrow treats a local stack as what it often is: a few native processes, a database, some environment variables, and a port. You declare them once. `burrow up` starts them in dependency order, waits until they are actually healthy, and gives you stable URLs. `burrow down` stops the whole tree.
-
-```text
-burrow.toml  ->  daemon  ->  supervisor  ->  native services
-                                   |
-                              Job Objects
-```
-
-No Docker daemon. No WSL distribution. No virtual machine. The optional container fallback is there for services that only have a Linux build, and it is opt-in per service.
-
-## Scope
-
-Burrow is deliberately narrow. It is built for one job, and it tries to do that job well.
-
-| ✅ Built for | ⛔ Not built for |
-| --- | --- |
-| Windows 11 x86-64 local development | Production, shared, or multi-tenant environments |
-| Native services with a trustworthy Windows build | Linux-only binaries, Linux containers, or image-based workflows |
-| One `burrow.toml` per project | Replacing Docker Compose feature-for-feature |
-| Stable ports, health checks, logs, snapshots | Sandboxing or isolating untrusted code |
-| Solo developers and small teams | A GUI, cloud control plane, telemetry, or auto-update |
-
-**Status:** pre-1.0. The core is implemented and tested; launch hardening is ongoing. Windows 11 x64 is the verified platform. Windows 10 is intended but unverified, as are ARM64, true standard-user accounts, OneDrive/UNC paths, FAT/exFAT volumes, corporate antivirus, `LongPathsEnabled=0`, and 8.3-disabled volumes. See the [compatibility matrix](docs/compatibility.md).
-
-There is no published release or signed installer yet. The supported install path is from a source checkout; the winget and Scoop manifests are drafts.
+Native Windows local development stacks. One `burrow.toml`. Stable ports. Health-gated startup. Logs, snapshots, and a live dashboard. No Docker daemon or VM by default.
 
 ## Quick start
 
 Requirements:
-
 - Windows 11 x86-64 (verified). Windows 10 is intended but unverified.
 - A normal, non-elevated terminal. PostgreSQL's Windows build refuses to initialize a cluster under an administrator token.
 - The runtimes your services need (`node`, `npm`, `python`, `cargo`, `go`, ...) on `PATH`. Burrow does not install language runtimes.
@@ -62,14 +20,9 @@ npm install
 burrow up
 ```
 
-The first `burrow up` shows a trust summary, downloads the verified PostgreSQL archive (373,254,386 bytes), initializes the cluster, seeds it, and starts both services. Later starts that reuse the package cache and initialized cluster take about two seconds on the benchmark machine.
+The first `burrow up` shows a trust summary, downloads the verified PostgreSQL archive (356 MB), initializes the cluster, seeds it, and starts both services. Later starts that reuse the package cache and initialized cluster take about two seconds on the benchmark machine.
 
-Open <http://api.localhost> or the direct loopback URL from `burrow status`. Press `Ctrl+C` or run `burrow down` to stop.
-
-<div align="center">
-  <img src="docs/assets/burrow-demo.svg" alt="Animated terminal: burrow init, burrow up, and burrow status with PostgreSQL and API healthy in 1.87 seconds" width="100%">
-  <sub>Illustrative animation built from the demo script. Ports, PIDs, and timings vary between machines and runs.</sub>
-</div>
+Open http://api.localhost or the direct loopback URL from `burrow status`. Press `Ctrl+C` or run `burrow down` to stop.
 
 For the Python FastAPI example, activate a virtual environment first because managed services inherit the daemon's environment:
 
@@ -83,10 +36,26 @@ burrow up
 
 See [Getting started](docs/getting-started.md) for the full walkthrough, including what to do when `api.localhost` does not resolve.
 
+## Scope
+
+Burrow is deliberately narrow. It is built for one job and tries to do that job well.
+
+| Built for | Not built for |
+|-----------|---------------|
+| Windows 11 x86-64 local development | Production, shared, or multi-tenant environments |
+| Native services with a trustworthy Windows build | Linux-only binaries, Linux containers, or image-based workflows |
+| One `burrow.toml` per project | Replacing Docker Compose feature-for-feature |
+| Stable ports, health checks, logs, snapshots | Sandboxing or isolating untrusted code |
+| Solo developers and small teams | A GUI, cloud control plane, telemetry, or auto-update |
+
+**Status:** pre-1.0. The core is implemented and tested; launch hardening is ongoing. Windows 11 x64 is the verified platform. Windows 10 is intended but unverified, as are ARM64, true standard-user accounts, OneDrive/UNC paths, FAT/exFAT volumes, corporate antivirus, `LongPathsEnabled=0`, and 8.3-disabled volumes. See the [compatibility matrix](docs/compatibility.md).
+
+There is no published release or signed installer yet. The supported install path is from a source checkout; the winget and Scoop manifests are drafts.
+
 ## What you get
 
 | Capability | What it does |
-| --- | --- |
+|------------|--------------|
 | **One config** | `burrow.toml` with strict validation, local overrides, template expansion, dependency graphs, cycle reports, generated per-project secrets, and a checked JSON Schema. |
 | **Native supervision** | Every service runs in a Windows Job Object with memory and CPU limits, health-gated startup, restart backoff, a crash-loop breaker, graceful shutdown, and per-service rotating logs. |
 | **Verified packages** | A content-addressed cache with pinned URL, byte size, SHA-256, resumable downloads, hardened extraction, and one-time database initialization and seeding. |
@@ -113,13 +82,13 @@ See [Getting started](docs/getting-started.md) for the full walkthrough, includi
 These are real measurements, not estimates. They were recorded on an AMD Ryzen 7 4800H (8 cores / 16 threads), 15.4 GB RAM, Windows 11 10.0.26200, with a release build of Burrow 0.1.0.
 
 | Scenario | Burrow | Docker Desktop + Compose |
-| --- | ---: | ---: |
+|----------|--------|--------------------------|
 | Warm start to HTTP 200 | **1.84–1.88 s** | 1.92–3.20 s |
 | Empty application data | 10.7 s | **4.11 s** |
-| Daemon / container memory | **10.9–11.0 MB** | 37.2–62.1 MB\* |
+| Daemon / container memory | **10.9–11.0 MB** | 37.2–62.1 MB* |
 | Cold start, empty package cache | 61.35 s | not measured |
 
-\* Compose container memory excludes Docker Desktop's VM and daemon, so it is **not like-for-like** with Burrow's daemon RSS.
+* Compose container memory excludes Docker Desktop's VM and daemon, so it is **not like-for-like** with Burrow's daemon RSS.
 
 Compose was faster when initializing empty application data. Burrow was slightly faster and more consistent on warm starts. Image pull/build and Burrow's package download are setup and excluded from the startup rows. Only Docker Compose was run; the other tools in the comparison are documentation-based. The full method, caveats, and raw data are in [Benchmarks](docs/benchmarks.md).
 
@@ -130,7 +99,7 @@ A separate quick-start pass went from a fresh checkout to the first seeded HTTP 
 Burrow is not a drop-in Docker Compose replacement. It targets native Windows services that already have trustworthy builds.
 
 | Property | Burrow | Docker Desktop + Compose on Windows |
-| --- | --- | --- |
+|----------|--------|--------------------------------------|
 | Process model | Native Windows processes, one Job Object per service (optional container fallback) | Linux containers in a managed VM / WSL 2 |
 | Resource overhead | 10.9–11.0 MB daemon RSS measured here | 37.2–62.1 MB container memory, excluding Docker Desktop's VM and daemon |
 | Warm startup | 1.84–1.88 s to HTTP 200 | 1.92–3.20 s to HTTP 200 |
@@ -148,7 +117,7 @@ A fuller, sourced comparison with Docker Compose, Podman Compose, Process Compos
 ## Commands
 
 | Command | Purpose |
-| --- | --- |
+|---------|---------|
 | `burrow init [--template <name>]` | Scaffold `burrow.toml` and detect the stack |
 | `burrow up [service...] [--detach] [--yes]` | Start all or selected services |
 | `burrow down` | Stop everything for this project |
@@ -182,7 +151,7 @@ Resource limits and process cleanup are operational safeguards, **not a security
 ## Compatibility
 
 | Area | Status |
-| --- | --- |
+|------|--------|
 | Windows 11 x86-64 | **Verified** |
 | Windows 10 x86-64 | Unverified |
 | Windows 11 ARM64 | Unverified |

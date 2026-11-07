@@ -2,15 +2,36 @@
 
 ## Current focus
 
-Packaging and trust work is complete for this cycle: the local release dry-run
-builds a zip plus a CycloneDX 1.5 SBOM and verifies both, cargo-deny is enforced
-locally and configured for CI/release, and the signing plan is documented. The
-docs site (E2) was assessed and deferred. What remains is human-only
-(publish/sign/submit/capture) or blocked on this machine (clean-machine pass, a
-remote CI run, Windows 10/ARM64 and other unverified rows). Do not write
-`docs/agent/LAUNCH_READINESS.md` until those are resolved.
+Cycle 20 redesigns the README and single architecture diagram with the Hallmark
+Furrow theme: warm manila paper, near-black ink, tangerine signal, grass green.
+The decorative hero and fake terminal SVG are removed. The diagnostic test
+fixture is fixed to use the actual temp project path so redaction works on any
+CI runner. The repository is public on `main`. The product is still pre-1.0: no
+release, signed installer, winget/Scoop submission, or screenshots exist. The
+clean-machine/CI verification and unverified compatibility rows remain blocked.
+Do not write `docs/agent/LAUNCH_READINESS.md` until those and the human-only
+launch steps are resolved.
 
-## Last cycle summary (2026-10-27, cycle 18)
+## Last cycle summary (2026-11-07, cycle 20)
+
+- **README rewritten with Hallmark Furrow**: quick start first, plain factual
+  copy, no em/en dashes, no middle-dot strings, no badge row, no AI clichés.
+  Structure: quick start, scope, what you get, architecture, measured
+  performance, fair comparison, commands, safety and trust, compatibility,
+  limitations, documentation, development, license.
+- **Single animated architecture diagram**: `docs/assets/burrow-architecture.svg`
+  redesigned in the Furrow palette (paper `#f5f1ea`, ink `#14110f`, accent
+  `#fc6b33`, green `#246e3a`, contour `#a67c5c`). One-time reveal animation
+  with `prefers-reduced-motion` fallback. No gradients over three stops, no
+  glow, no fake terminal chrome, no decorative status dots, no infinite loops.
+  Deleted `burrow-hero.svg` and `burrow-demo.svg`.
+- **Diagnostic test fixed**: the bundle test now uses the actual temporary
+  project directory from `tempfile` instead of a hardcoded path under the local
+  user profile. This makes redaction work on any CI runner.
+- **Local gate green**: fmt, clippy, 212 tests across 23 suites, audit exit 0
+  with 3 allowed warnings, deny green with duplicate warning.
+
+## Previous cycle summary (2026-10-27, cycle 18)
 
 - **Release dry-run and SBOM**: `scripts/release-dry-run.ps1` now builds,
   stages, zips, generates `burrow-<tag>-windows-x86_64.cdx.json` with
@@ -83,7 +104,7 @@ remote CI run, Windows 10/ARM64 and other unverified rows). Do not write
   4800H (8 cores / 16 threads), 15.4 GB RAM; `LongPathsEnabled=1`.
 - Probe sessions: PowerShell 7.6.7 and Windows PowerShell 5.1.26100.9711,
   non-elevated (medium integrity), locale `en-NZ`.
-- Rust 1.94.1 stable via `C:\Users\Asus\.cargo\bin`; workspace MSRV 1.85.
+- Rust 1.94.1 stable via `%USERPROFILE%\.cargo\bin`; workspace MSRV 1.85.
   Node 22.13.1, npm 10.9.2.
 - Nightly `1.101.0-nightly (12433c307 2026-10-24)` and `cargo-fuzz 0.13.2`
   installed locally for A3.

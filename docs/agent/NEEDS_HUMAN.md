@@ -2,7 +2,16 @@
 
 - **Publishing, signing, and package-manager submission** (crates.io, GitHub
   release, winget, Scoop, signing certificates) remain human actions per the
-  hard rules. Nothing here publishes, tags, pushes to `main`, or posts.
+  hard rules. The repository is public on `main`, but no release, tag, signature,
+  or package submission exists. Nothing here tags, signs, uploads a release, or
+  posts.
+- **Public-repository review**: confirm the README, animated SVG asset, security
+  policy, code of conduct contact, and packaging drafts are acceptable for
+  public view. The pre-publication history was rewritten to
+  `135618994+vanshcodeworks@users.noreply.github.com` before publication, so the
+  private Gmail address is no longer in the commit metadata. The README now uses
+  the Hallmark Furrow theme with one animated architecture diagram; the
+  decorative hero and fake terminal SVG were removed.
 - **Release review**: before publishing, review
   `scripts/release-dry-run.ps1`, `deny.toml`, and the release workflow. Confirm
   the published release contains the zip, `SHA256SUMS.txt`, and the CycloneDX
