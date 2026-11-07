@@ -722,7 +722,7 @@ mod tests {
     use crate::project::Project;
     use crate::state::{RuntimeState, ServiceSnapshot, ServiceStatus};
 
-    const PROJECT: &str = r"C:\Users\Asus\AppData\Local\Temp\shop";
+    const PROJECT: &str = r"C:\Users\example\AppData\Local\Temp\shop";
 
     fn redactor() -> Redactor {
         let mut redactor = Redactor::new(std::path::Path::new(PROJECT));
@@ -790,7 +790,7 @@ mod tests {
         Project::load(Some(dir.to_path_buf())).expect("load project")
     }
 
-    fn state() -> RuntimeState {
+    fn state(dir: &std::path::Path) -> RuntimeState {
         let mut services = std::collections::BTreeMap::new();
         services.insert(
             "db".to_owned(),
@@ -813,7 +813,7 @@ mod tests {
         RuntimeState {
             version: 1,
             project: "shop".to_owned(),
-            project_dir: std::path::PathBuf::from(PROJECT),
+            project_dir: dir.to_path_buf(),
             pid: 7,
             token: "state-token-0123456789".to_owned(),
             control_port: 49152,
@@ -841,7 +841,7 @@ mod tests {
         .expect("write secrets");
         fs::write(
             dir.join(".burrow").join("daemon.log"),
-            "started\npassword=log-secret\npath C:\\Users\\Asus\\AppData\\Local\\Temp\\shop\n",
+            format!("started\npassword=log-secret\npath {}\n", dir.display()),
         )
         .expect("write daemon log");
         fs::write(
@@ -854,13 +854,13 @@ mod tests {
 
     fn bundle(dir: &std::path::Path, report_dir: Option<&std::path::Path>) -> std::path::PathBuf {
         let project = make_project(dir);
-        let state = state();
+        let state = state(dir);
         let report = serde_json::json!({
             "ok": true,
             "generated_at": "2026-10-26T12:00:00Z",
             "burrow_version": "0.1.0",
             "project": "shop",
-            "project_dir": PROJECT,
+            "project_dir": dir.display().to_string(),
             "checks": [{
                 "name": "config",
                 "status": "warn",
@@ -904,6 +904,7 @@ mod tests {
         assert!(!path.with_extension("zip.tmp").exists());
         let entries = entries(&path);
         let names: Vec<&str> = entries.iter().map(|(name, _)| name.as_str()).collect();
+        let project_path = dir.path().display().to_string();
         for expected in [
             "README.txt",
             "report.json",
@@ -931,7 +932,7 @@ mod tests {
                 );
             }
             assert!(
-                !contents.contains(PROJECT),
+                !contents.contains(&project_path),
                 "{name} leaked the project path:\n{contents}"
             );
         }
