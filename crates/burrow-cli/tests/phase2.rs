@@ -292,13 +292,18 @@ fn container_service_starts_when_an_engine_is_available() {
         eprintln!("skipping: no responding container engine on this machine");
         return;
     }
-    // Verify the test image has a Windows manifest before running the full test.
-    let manifest_ok = Command::new("docker")
+    // Verify the test image has a Windows amd64 manifest before running the full test.
+    let has_windows_manifest = Command::new("docker")
         .args(["manifest", "inspect", "traefik/whoami:v1.10"])
         .output()
-        .map(|output| output.status.success())
+        .map(|output| {
+            output.status.success()
+                && String::from_utf8(output.stdout)
+                    .ok()
+                    .is_some_and(|stdout| stdout.contains("\"os\": \"windows\""))
+        })
         .unwrap_or(false);
-    if !manifest_ok {
+    if !has_windows_manifest {
         eprintln!("skipping: test image lacks Windows manifest on this runner");
         return;
     }
