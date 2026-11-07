@@ -1050,6 +1050,62 @@ reduced-motion pass was run.
 **Next**: wait for the remote CI result, record it, and leave the human-only
 release, signing, package-manager, screenshot, and social steps to a human.
 
+## 2026-11-07 - cycle 21: Premium README redesign complete, CI green
+
+**Task**: Complete the premium README redesign with Hallmark Furrow theme,
+including custom animated hero.svg, fix container test Windows manifest check,
+and verify remote CI passes.
+
+**What changed**:
+
+- **Complete README overhaul**: 23 sections covering every aspect of Burrow as a
+  polished developer infrastructure product. Quick start leads with one-command
+  `burrow up` demo. Real `burrow.toml` from `examples/node-postgres` showcased.
+  Features presented as 8 product benefits. Mermaid architecture diagram +
+  reference to animated `burrow-architecture.svg`. Deep sections on orchestration,
+  native process management (with explicit non-sandbox warning), networking,
+  package registry, diagnostics, snapshots, measured benchmarks, fair comparison,
+  CLI reference, compatibility matrix, security model, limitations, docs index,
+  development setup, contributing, license.
+- **Custom animated hero.svg** (1200x420): Shows `burrow up` command in terminal
+  panel, flow lines drawing to daemon → supervisor → native services (postgres,
+  api, worker) → loopback proxy, package cache, .burrow/data. Furrow palette
+  (paper `#f5f1ea`/`#fffdfa`, ink `#14110f`, accent `#fc6b33`, green `#246e3a`,
+  contour `#a67c5c`). One-time reveal + fan-in + line-drawing animations with
+  `prefers-reduced-motion` fallback.
+- **Container test fixed**: `crates/burrow-cli/tests/phase2.rs` now checks
+  `docker manifest inspect` output for `"os": "windows"` before running.
+  traefik/whoami:v1.10 lacks Windows amd64 manifest on CI runners, so test
+  cleanly skips with message instead of failing.
+- **Remote CI green**: Run 42359129369 — both `check` (6m20s) and `audit` (9m57s)
+  jobs pass on `windows-latest`. All 212+ tests pass, artifact uploaded.
+- **SVG assets verified**: hero.svg (9230 bytes) and burrow-architecture.svg
+  (10914 bytes) both return HTTP 200 from raw.githubusercontent.com.
+
+**Commands and real results**:
+
+- `cargo fmt --all --check`: green.
+- `cargo clippy --workspace --all-targets -- -D warnings`: green.
+- `cargo test --workspace --all-targets -- --test-threads=1`: **212+ passed,
+  0 failed across 23 suites** (container test skips on CI, runs locally).
+- `cargo audit`: exit 0 with **3 allowed warnings** (`paste` unmaintained;
+  `lru` unsound x2).
+- `cargo deny check --hide-inclusion-graph`: **advisories ok, bans ok, licenses
+  ok, sources ok** (duplicate-version warning only).
+- PowerShell `[xml]` validation: both SVGs well-formed.
+
+**Cleanup**: no stacks, containers, or service processes created. Both SVGs
+self-contained, served by GitHub. Container test now resilient to missing
+Windows manifests.
+
+**Not verified**: a clean machine, Windows 10, ARM64, a true standard-user
+account, OneDrive/UNC, FAT/exFAT, corporate antivirus, `LongPathsEnabled=0`,
+8.3-disabled volumes, and Podman parity. The animated SVGs were validated as
+well-formed XML; no screen-reader or reduced-motion manual pass was run.
+
+**Next**: leave the human-only release, signing, package-manager, screenshot,
+and social steps to a human.
+
 ## 2026-11-07 - cycle 20: Hallmark Furrow README redesign and CI test fix
 
 **Task**: Rewrite the README with the Hallmark Furrow design system (warm manila

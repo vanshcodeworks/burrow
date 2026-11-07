@@ -19,6 +19,11 @@
       temporary project directory from `tempfile` instead of a hardcoded path
       under the local user profile, so redaction works on any CI runner.
       Fixed in cycle 20.
+- [x] **Premium README redesign**: animated hero.svg, 23 sections, real
+      configuration showcase, measured benchmarks, fair comparison, security
+      model, all claims verified. Completed in cycle 21.
+- [x] **Remote CI green**: run 42359129369 passes on `windows-latest` with
+      check and audit jobs. Fixed container test Windows manifest check.
 - [ ] **True clean-machine pass**: a VM, Windows Sandbox, or clean CI runner
       with no pre-installed toolchain, including a standard-user account and
       Windows 10. Blocked: none available on this machine.
