@@ -2,22 +2,22 @@
   "$schema": "https://raw.githubusercontent.com/ScoopInstaller/Scoop/master/schema.json",
   "version": "0.1.0",
   "description": "Native Windows local development environment manager",
-  "homepage": "https://github.com/REPLACE_WITH_OWNER/Burrow",
+  "homepage": "https://github.com/vanshcodeworks/burrow",
   "license": "MIT OR Apache-2.0",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/REPLACE_WITH_OWNER/Burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip",
+      "url": "https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip",
       "hash": "REPLACE_WITH_SHA256"
     }
   },
   "bin": "burrow.exe",
   "checkver": {
-    "github": "https://github.com/REPLACE_WITH_OWNER/Burrow"
+    "github": "https://github.com/vanshcodeworks/burrow"
   },
   "autoupdate": {
     "architecture": {
       "64bit": {
-        "url": "https://github.com/REPLACE_WITH_OWNER/Burrow/releases/download/v$version/burrow-v$version-windows-x86_64.zip"
+        "url": "https://github.com/vanshcodeworks/burrow/releases/download/v$version/burrow-v$version-windows-x86_64.zip"
       }
     }
   }

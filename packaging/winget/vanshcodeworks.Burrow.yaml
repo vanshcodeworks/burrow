@@ -1,14 +1,14 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.6.0.schema.json
 #
-# DRAFT: replace every REPLACE_WITH_* value before submitting this manifest.
+# DRAFT: replace REPLACE_WITH_SHA256 after a real release.
 # See ../README.md for the release and checksum steps.
 
-PackageIdentifier: REPLACE_WITH_OWNER.Burrow
+PackageIdentifier: vanshcodeworks.Burrow
 PackageVersion: 0.1.0
 PackageName: Burrow
-Publisher: REPLACE_WITH_OWNER
+Publisher: Burrow contributors
 License: MIT OR Apache-2.0
-LicenseUrl: https://github.com/REPLACE_WITH_OWNER/Burrow/blob/main/LICENSE-MIT
+LicenseUrl: https://github.com/vanshcodeworks/burrow/blob/main/LICENSE-MIT
 Copyright: Copyright (c) Burrow contributors
 ShortDescription: Native Windows local development environment manager
 Description: >-
@@ -23,10 +23,10 @@ Tags:
   - postgresql
   - rust
   - windows
-PackageUrl: https://github.com/REPLACE_WITH_OWNER/Burrow
+PackageUrl: https://github.com/vanshcodeworks/burrow
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/REPLACE_WITH_OWNER/Burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip
+    InstallerUrl: https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip
     InstallerSha256: REPLACE_WITH_SHA256
     InstallerType: zip
     NestedInstallerType: portable

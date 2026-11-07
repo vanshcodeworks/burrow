@@ -5,14 +5,13 @@ service, or background update process.
 
 ## Current status
 
-This repository does not have a public Git remote or a published release yet.
-The files in this directory are drafts:
+This repository does not have a published release yet. The files in this
+directory are drafts:
 
 - [`winget/`](winget/) is a Windows Package Manager singleton manifest.
 - [`scoop/burrow.json`](scoop/burrow.json) is a Scoop manifest.
-- Every `REPLACE_WITH_OWNER` and `REPLACE_WITH_SHA256` value is a placeholder.
-  The manifests will not install anything until those values are filled from a
-  real release.
+- The `REPLACE_WITH_SHA256` values are placeholders. The manifests will not
+  install anything until those values are filled from a real release.
 
 The only supported install path today is from a checkout:
 
@@ -109,12 +108,12 @@ inside the zip.
 ## Filling the winget draft
 
 1. Publish a release and download `SHA256SUMS.txt`.
-2. Replace `REPLACE_WITH_OWNER` with the GitHub owner in
-   [`winget/REPLACE_WITH_OWNER.Burrow.yaml`](winget/REPLACE_WITH_OWNER.Burrow.yaml).
+2. Confirm the owner and repository in
+   [`winget/vanshcodeworks.Burrow.yaml`](winget/vanshcodeworks.Burrow.yaml).
 3. Set `PackageVersion` and the `v...` segment of `InstallerUrl` to the release
    tag.
 4. Replace `InstallerSha256` with the hash from `SHA256SUMS.txt`.
-5. Rename the file to `<PackageIdentifier>.yaml` if the identifier changes.
+5. Rename the file if the `PackageIdentifier` changes.
 6. Validate and test it with the winget tooling:
 
    ```powershell
@@ -129,14 +128,14 @@ service or write machine-wide state.
 ## Filling the Scoop draft
 
 1. Publish a release and download `SHA256SUMS.txt`.
-2. Replace `REPLACE_WITH_OWNER` and `REPLACE_WITH_SHA256` in
+2. Replace `REPLACE_WITH_SHA256` in
    [`scoop/burrow.json`](scoop/burrow.json).
 3. Set `version` and the `v$version` URL pattern to the release tag.
 4. Test the manifest locally with Scoop, then submit it to a bucket if desired.
 
 Scoop installs the zip, exposes `burrow.exe` on `PATH`, and uses the same
-`SHA256SUMS.txt` hash. The `checkver` and `autoupdate` blocks assume a GitHub
-repository at the placeholder URL.
+`SHA256SUMS.txt` hash. The `checkver` and `autoupdate` blocks point at the
+public repository URL.
 
 ## Versioning
 
