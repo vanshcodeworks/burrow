@@ -13,8 +13,9 @@ support branch for pre-1.0 versions.
 ## Reporting a vulnerability
 
 Do not open a public issue for a suspected vulnerability. Use GitHub's private
-vulnerability reporting for the repository, or email
-**REPLACE_WITH_SECURITY_CONTACT** if private reporting is unavailable.
+vulnerability reporting for the repository. If private reporting is unavailable,
+open a minimal issue asking for a private channel without including exploit
+details.
 
 Include:
 

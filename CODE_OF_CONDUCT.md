@@ -59,9 +59,10 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-**REPLACE_WITH_CONTACT_EMAIL**. All complaints will be reviewed and investigated
-promptly and fairly.
+reported to the maintainer through GitHub at
+<https://github.com/vanshcodeworks>. If the report is sensitive, ask for a
+private channel first and do not include details in a public issue. All
+complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.
