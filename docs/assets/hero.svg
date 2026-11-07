@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" role="img" aria-labelledby="hero-title hero-desc">
+  <title id="hero-title">Burrow: one command fans out into a native development stack</title>
+  <desc id="hero-desc">Animation of 'burrow up' command expanding into supervised native services with stable ports, health checks, and a loopback proxy.</desc>
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fffdfa"/>
+      <stop offset="100%" stop-color="#f5f1ea"/>
+    </linearGradient>
+    <linearGradient id="accent-bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#fc6b33"/>
+      <stop offset="100%" stop-color="#fc6b33"/>
+    </linearGradient>
+    <marker id="arrow-right" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#fc6b33"/>
+    </marker>
+    <style>
+      .panel { fill: #fefdfa; stroke: #dbd7ce; stroke-width: 1.5; }
+      .panel-hot { fill: #fffdfa; stroke: #fc6b33; stroke-width: 1.5; }
+      .panel-muted { fill: #f5f1ea; stroke: #e9e4d9; stroke-width: 1; }
+      .wire { stroke: #a67c5c; stroke-width: 1.5; fill: none; stroke-dasharray: 6 4; }
+      .wire-solid { stroke: #a67c5c; stroke-width: 1.5; fill: none; }
+      .label { font-family: "Red Hat Text", system-ui, sans-serif; fill: #58514c; font-size: 12px; }
+      .name { font-family: "Red Hat Display", system-ui, sans-serif; fill: #14110f; font-size: 15px; font-weight: 600; }
+      .tiny { font-family: "Red Hat Text", system-ui, sans-serif; fill: #58514c; font-size: 11px; }
+      .note { font-family: "Red Hat Mono", monospace; fill: #58514c; font-size: 10.5px; }
+      .title-text { font-family: "Red Hat Display", system-ui, sans-serif; fill: #14110f; font-size: 20px; font-weight: 700; }
+      .subtitle-text { font-family: "Red Hat Text", system-ui, sans-serif; fill: #58514c; font-size: 13px; }
+      .accent-rule { fill: #fc6b33; }
+      .green-dot { fill: #246e3a; }
+      .contour { stroke: #a67c5c; stroke-width: 0.8; fill: none; }
+      .cmd-text { font-family: "Red Hat Mono", monospace; fill: #14110f; font-size: 16px; }
+      .cmd-prompt { fill: #58514c; }
+      .cmd-accent { fill: #fc6b33; }
+      .pulse {
+        animation: pulse 3s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 0.4; }
+        50% { opacity: 1; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .pulse { animation: none; opacity: 1; }
+      }
+      .reveal {
+        opacity: 0;
+        animation: reveal 0.8s ease-out forwards;
+      }
+      @keyframes reveal {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .reveal { animation: none; opacity: 1; }
+      }
+      .fan-in {
+        opacity: 0;
+        animation: fanIn 1.2s ease-out forwards;
+      }
+      @keyframes fanIn {
+        from { opacity: 0; transform: translateX(-20px) scale(0.9); }
+        to { opacity: 1; transform: translateX(0) scale(1); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .fan-in { animation: none; opacity: 1; }
+      }
+      .fan-in-delay-1 { animation-delay: 0.3s; }
+      .fan-in-delay-2 { animation-delay: 0.5s; }
+      .fan-in-delay-3 { animation-delay: 0.7s; }
+      .fan-in-delay-4 { animation-delay: 0.9s; }
+      .flow-line {
+        stroke-dasharray: 800;
+        stroke-dashoffset: 800;
+        animation: draw 1.5s ease-out forwards;
+      }
+      @keyframes draw {
+        to { stroke-dashoffset: 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .flow-line { animation: none; stroke-dashoffset: 0; }
+      }
+    </style>
+  </defs>
+
+  <!-- Paper background -->
+  <rect x="0" y="0" width="1200" height="420" fill="url(#paper)"/>
+
+  <!-- Top accent rule -->
+  <rect x="0" y="0" width="1200" height="4" class="accent-rule"/>
+
+  <!-- Title -->
+  <text x="40" y="48" class="title-text reveal" style="animation-delay: 0.1s;">One command. Native stack. Stable ports.</text>
+  <text x="40" y="72" class="subtitle-text reveal" style="animation-delay: 0.2s;">burrow up fans out into supervised services with health-gated startup, a loopback proxy, and snapshots.</text>
+
+  <!-- Terminal panel showing burrow up command -->
+  <g class="panel-hot reveal" style="animation-delay: 0.3s;">
+    <rect x="40" y="100" width="320" height="180" rx="8"/>
+  </g>
+  <text x="56" y="128" class="cmd-text reveal" style="animation-delay: 0.4s;"><tspan class="cmd-prompt">> </tspan><tspan class="cmd-accent">burrow up</tspan></text>
+  <text x="56" y="152" class="note reveal" style="animation-delay: 0.5s;">Loading burrow.toml...</text>
+  <text x="56" y="170" class="note reveal" style="animation-delay: 0.6s;">Validating configuration...</text>
+  <text x="56" y="188" class="note reveal" style="animation-delay: 0.7s;">Warming package cache...</text>
+  <text x="56" y="206" class="note reveal" style="animation-delay: 0.8s;">Starting daemon...</text>
+  <text x="56" y="224" class="note reveal" style="animation-delay: 0.9s;">Health checks passing...</text>
+  <text x="56" y="242" class="note reveal" style="animation-delay: 1.0s;">Stack ready ✓</text>
+
+  <!-- Flow lines fanning out from terminal -->
+  <g class="flow-line reveal" style="animation-delay: 1.1s;">
+    <path d="M 360 190 C 420 160, 480 120, 520 110" stroke="#fc6b33" stroke-width="2" fill="none" marker-end="url(#arrow-right)"/>
+  </g>
+  <g class="flow-line reveal" style="animation-delay: 1.2s;">
+    <path d="M 360 210 C 420 210, 480 210, 520 220" stroke="#fc6b33" stroke-width="2" fill="none" marker-end="url(#arrow-right)"/>
+  </g>
+  <g class="flow-line reveal" style="animation-delay: 1.3s;">
+    <path d="M 360 230 C 420 260, 480 300, 520 310" stroke="#fc6b33" stroke-width="2" fill="none" marker-end="url(#arrow-right)"/>
+  </g>
+
+  <!-- Daemon panel -->
+  <g class="panel-hot fan-in fan-in-delay-1" style="animation-delay: 1.2s;">
+    <rect x="500" y="100" width="200" height="100" rx="8"/>
+  </g>
+  <text x="516" y="128" class="name">daemon</text>
+  <text x="516" y="150" class="tiny">state · ports · secrets</text>
+  <text x="516" y="170" class="tiny">control IPC</text>
+  <circle cx="540" cy="116" r="4" class="green-dot pulse" style="animation-delay: 1.5s;"/>
+
+  <!-- Supervisor panel -->
+  <g class="panel-hot fan-in fan-in-delay-2" style="animation-delay: 1.3s;">
+    <rect x="720" y="100" width="190" height="100" rx="8"/>
+  </g>
+  <text x="736" y="128" class="name">supervisor</text>
+  <text x="736" y="150" class="tiny">Job Object per service</text>
+  <text x="736" y="170" class="tiny">memory · CPU caps</text>
+
+  <!-- Native services panel -->
+  <g class="panel-hot fan-in fan-in-delay-3" style="animation-delay: 1.4s;">
+    <rect x="930" y="80" width="230" height="160" rx="8"/>
+  </g>
+  <text x="946" y="108" class="name">native services</text>
+  <circle cx="952" cy="126" r="4" class="green-dot pulse" style="animation-delay: 1.6s;"/>
+  <text x="966" y="130" class="tiny">postgres@16.15</text>
+  <circle cx="952" cy="150" r="4" class="green-dot pulse" style="animation-delay: 1.7s;"/>
+  <text x="966" y="154" class="tiny">api (node server.js)</text>
+  <circle cx="952" cy="174" r="4" class="green-dot pulse" style="animation-delay: 1.8s;"/>
+  <text x="966" y="178" class="tiny">worker (if needed)</text>
+  <text x="946" y="210" class="note">health-gated · restarted</text>
+
+  <!-- Loopback proxy panel -->
+  <g class="panel fan-in fan-in-delay-4" style="animation-delay: 1.5s;">
+    <rect x="930" y="260" width="230" height="80" rx="8"/>
+  </g>
+  <text x="946" y="288" class="name">loopback proxy</text>
+  <text x="946" y="310" class="tiny">*.localhost · WebSocket</text>
+  <text x="946" y="330" class="tiny">127.0.0.1 by default</text>
+
+  <!-- Package cache panel -->
+  <g class="panel fan-in fan-in-delay-4" style="animation-delay: 1.6s;">
+    <rect x="720" y="260" width="190" height="80" rx="8"/>
+  </g>
+  <text x="736" y="288" class="name">package cache</text>
+  <text x="736" y="310" class="tiny">SHA-256 · resumable</text>
+  <text x="736" y="330" class="tiny">hardened extraction</text>
+
+  <!-- Data / snapshots panel -->
+  <g class="panel fan-in fan-in-delay-4" style="animation-delay: 1.7s;">
+    <rect x="500" y="260" width="200" height="80" rx="8"/>
+  </g>
+  <text x="516" y="288" class="name">.burrow/data</text>
+  <text x="516" y="310" class="tiny">snapshots · restore</text>
+  <text x="516" y="330" class="tiny">journaled rollback</text>
+
+  <!-- Contour lines (subtle survey-map feel) -->
+  <g class="contour reveal" style="animation-delay: 1.8s;">
+    <path d="M 30 100 Q 600 80, 1170 100"/>
+    <path d="M 30 200 Q 600 180, 1170 200" stroke-dasharray="4 6"/>
+    <path d="M 30 300 Q 600 280, 1170 300"/>
+    <path d="M 30 380 Q 600 360, 1170 380" stroke-dasharray="4 6"/>
+  </g>
+
+  <!-- Bottom accent rule -->
+  <rect x="40" y="380" width="1120" height="2" fill="url(#accent-bar)" opacity="0.6"/>
+  <text x="40" y="406" class="note">Services run as your Windows user. Job Objects provide cleanup and resource limits, not a security boundary.</text>
+</svg>
