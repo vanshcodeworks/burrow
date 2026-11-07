@@ -280,8 +280,9 @@ fn container_services_fail_early_without_an_engine() {
 
 #[test]
 fn container_service_starts_when_an_engine_is_available() {
-    // The test needs a responding engine; without one it reports and skips,
-    // because CI Windows runners do not ship Docker.
+    // The test needs a responding engine and a Windows-compatible image;
+    // CI Windows runners may have Docker but lack a Windows manifest for
+    // the test image. Check both.
     let available = Command::new("docker")
         .arg("version")
         .output()
@@ -289,6 +290,16 @@ fn container_service_starts_when_an_engine_is_available() {
         .unwrap_or(false);
     if !available {
         eprintln!("skipping: no responding container engine on this machine");
+        return;
+    }
+    // Verify the test image has a Windows manifest before running the full test.
+    let manifest_ok = Command::new("docker")
+        .args(["manifest", "inspect", "traefik/whoami:v1.10"])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+    if !manifest_ok {
+        eprintln!("skipping: test image lacks Windows manifest on this runner");
         return;
     }
 
