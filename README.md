@@ -8,6 +8,80 @@
 
 ---
 
+## What Is This? (In Plain English)
+
+**Burrow is a tool that starts your whole local dev stack with one command.**
+
+You write a `burrow.toml` file listing your services (e.g., PostgreSQL database, Node.js API, background worker). Then you run:
+
+```
+burrow up
+```
+
+Burrow:
+1. **Downloads** the exact PostgreSQL version you need (verified SHA-256) into a local cache
+2. **Starts** each service as a real Windows process — no Docker, no VM
+3. **Waits** until each service is actually healthy before starting the next one
+4. **Gives you** stable URLs like `http://api.localhost` that work every time
+5. **Shows** a live dashboard (`burrow top`) with logs, CPU, and memory
+
+When you're done:
+```
+burrow down
+```
+
+Everything stops cleanly. Your data stays in `.burrow/data/` — you can snapshot it, restore it, or reset a single service.
+
+**Why not Docker Compose?**
+- Docker runs a Linux VM on Windows (slow, heavy, licensing)
+- Burrow runs native Windows binaries directly — faster startup, less memory, no VM
+- Use `use = "container:IMAGE"` only for services that don't have a Windows build
+
+---
+
+## Quick Start (Real-Life Steps)
+
+**Prerequisites:**
+- Windows 11 (verified). Windows 10 works but unverified.
+- A normal terminal — **not Administrator**. PostgreSQL refuses to initialize as admin.
+- Node.js, Python, Go, Rust, etc. already on your PATH (Burrow doesn't install languages).
+- To build from source: Rust 1.85+ and Visual Studio Build Tools.
+
+**Try it in 3 commands:**
+
+```powershell
+# 1. Get the code
+git clone https://github.com/vanshcodeworks/burrow.git
+cd burrow
+
+# 2. Install Burrow (builds from source)
+cargo install --path crates\burrow-cli --locked
+
+# 3. Run the example project
+cd examples\node-postgres
+npm install
+burrow up
+```
+
+**What happens:**
+1. First run: downloads PostgreSQL (~356 MB), initializes the database, seeds it, starts the API
+2. Later runs: **~1.87 seconds** — uses cached PostgreSQL and initialized database
+3. Open `http://api.localhost` in your browser — it just works
+4. Press `Ctrl+C` or run `burrow down` to stop
+
+**Python example (FastAPI + PostgreSQL):**
+```powershell
+cd examples\python-postgres
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+burrow up
+```
+
+---
+
+## Quick Navigation
+
 ## Quick Navigation
 
 | Section | Description |
