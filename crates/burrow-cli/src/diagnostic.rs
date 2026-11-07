@@ -417,6 +417,12 @@ impl Redactor {
         if let Some(home) = std::env::var_os("USERPROFILE") {
             push_path_variants(&mut paths, Path::new(&home), "%USERPROFILE%");
         }
+        if let Some(temp) = std::env::var_os("TEMP") {
+            push_path_variants(&mut paths, Path::new(&temp), "%TEMP%");
+        }
+        if let Some(tmp) = std::env::var_os("TMP") {
+            push_path_variants(&mut paths, Path::new(&tmp), "%TMP%");
+        }
         Self {
             secrets: Vec::new(),
             paths,
