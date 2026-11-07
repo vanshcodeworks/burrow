@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 580" width="1000" height="580" role="img" aria-labelledby="title desc">
+  <title id="title">Animated Burrow terminal demo</title>
+  <desc id="desc">A terminal window types burrow init, burrow up, and burrow status, then shows PostgreSQL and an API healthy in 1.87 seconds.</desc>
+  <defs>
+    <linearGradient id="shell" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1220"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0ea5e9" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.85"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <style>
+      .line { animation: lineIn .34s ease-out both; }
+      .d1  { animation-delay: .10s; }
+      .d2  { animation-delay: .70s; }
+      .d3  { animation-delay: 1.05s; }
+      .d4  { animation-delay: 1.45s; }
+      .d5  { animation-delay: 1.90s; }
+      .d6  { animation-delay: 2.55s; }
+      .d7  { animation-delay: 2.90s; }
+      .d8  { animation-delay: 3.30s; }
+      .d9  { animation-delay: 3.75s; }
+      .d10 { animation-delay: 4.15s; }
+      .d11 { animation-delay: 4.55s; }
+      .d12 { animation-delay: 4.85s; }
+      .d13 { animation-delay: 5.15s; }
+      .d14 { animation-delay: 5.55s; }
+      .d15 { animation-delay: 6.00s; }
+      @keyframes lineIn {
+        from { transform: translateY(5px); }
+        to   { transform: translateY(0); }
+      }
+      .blink { animation: blink 1.05s steps(2, start) infinite; }
+      @keyframes blink { 50% { opacity: 0; } }
+      .pulse { animation: pulse 2.4s ease-in-out infinite; }
+      @keyframes pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+    </style>
+  </defs>
+
+  <rect x="4" y="4" width="992" height="572" rx="18" fill="url(#shell)" stroke="#1e293b" stroke-width="2" filter="url(#shadow)"/>
+
+  <path d="M 4 22 A 18 18 0 0 1 22 4 H 978 A 18 18 0 0 1 996 22 V 54 H 4 Z" fill="#111827"/>
+  <circle cx="34" cy="29" r="6" fill="#ef4444"/>
+  <circle cx="54" cy="29" r="6" fill="#f59e0b"/>
+  <circle cx="74" cy="29" r="6" fill="#22c55e"/>
+  <text x="500" y="35" text-anchor="middle" font-family="Cascadia Code, Consolas, monospace" font-size="13" fill="#94a3b8">burrow  ·  Windows PowerShell</text>
+  <text x="962" y="35" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="1" fill="#475569">REAL RUN</text>
+
+  <g font-family="Cascadia Code, Consolas, monospace" font-size="16">
+    <g class="line d1">
+      <text x="44" y="96" fill="#4ade80">PS C:\dev\shop&gt;</text>
+      <text x="194" y="96" fill="#e2e8f0" mask="url(#type1)">burrow init</text>
+    </g>
+
+    <g class="line d2">
+      <text x="44" y="130" fill="#34d399">✓</text>
+      <text x="72" y="130" fill="#94a3b8">detected Node.js + PostgreSQL</text>
+    </g>
+
+    <g class="line d3">
+      <text x="44" y="164" fill="#34d399">✓</text>
+      <text x="72" y="164" fill="#94a3b8">wrote burrow.toml</text>
+    </g>
+
+    <g class="line d4">
+      <text x="44" y="212" fill="#4ade80">PS C:\dev\shop&gt;</text>
+      <text x="194" y="212" fill="#e2e8f0" mask="url(#type2)">burrow up</text>
+    </g>
+
+    <g class="line d5">
+      <text x="44" y="246" fill="#34d399">✓</text>
+      <text x="72" y="246" fill="#cbd5e1">postgres</text>
+      <text x="196" y="246" fill="#34d399">healthy</text>
+      <text x="308" y="246" fill="#7dd3fc">127.0.0.1:45242</text>
+    </g>
+
+    <g class="line d6">
+      <text x="44" y="280" fill="#34d399">✓</text>
+      <text x="72" y="280" fill="#cbd5e1">api</text>
+      <text x="196" y="280" fill="#34d399">healthy</text>
+      <text x="308" y="280" fill="#7dd3fc">http://api.localhost</text>
+    </g>
+
+    <g class="line d7">
+      <text x="44" y="314" fill="#38bdf8" font-weight="700">Burrow is up in 1.87s</text>
+    </g>
+
+    <g class="line d8">
+      <text x="44" y="362" fill="#4ade80">PS C:\dev\shop&gt;</text>
+      <text x="194" y="362" fill="#e2e8f0" mask="url(#type3)">burrow status</text>
+    </g>
+
+    <g class="line d9">
+      <text x="44" y="400" fill="#64748b" font-size="13" letter-spacing="1">SERVICE</text>
+      <text x="170" y="400" fill="#64748b" font-size="13" letter-spacing="1">STATUS</text>
+      <text x="286" y="400" fill="#64748b" font-size="13" letter-spacing="1">PORT</text>
+      <text x="390" y="400" fill="#64748b" font-size="13" letter-spacing="1">RSS</text>
+    </g>
+
+    <g class="line d10">
+      <text x="44" y="434" fill="#cbd5e1" font-size="15">postgres</text>
+      <text x="170" y="434" fill="#34d399" font-size="15">healthy</text>
+      <text x="286" y="434" fill="#7dd3fc" font-size="15">45242</text>
+      <text x="390" y="434" fill="#94a3b8" font-size="15">109.0 MB</text>
+      <circle cx="158" cy="429" r="4" fill="#34d399" class="pulse"/>
+    </g>
+
+    <g class="line d11">
+      <text x="44" y="468" fill="#cbd5e1" font-size="15">api</text>
+      <text x="170" y="468" fill="#34d399" font-size="15">healthy</text>
+      <text x="286" y="468" fill="#7dd3fc" font-size="15">44058</text>
+      <text x="390" y="468" fill="#94a3b8" font-size="15">50.8 MB</text>
+      <circle cx="158" cy="463" r="4" fill="#34d399" class="pulse"/>
+    </g>
+
+    <g class="line d12">
+      <text x="44" y="516" fill="#4ade80">PS C:\dev\shop&gt;</text>
+      <rect x="194" y="500" width="10" height="20" fill="#38bdf8" class="blink"/>
+    </g>
+  </g>
+
+  <rect x="4" y="536" width="992" height="40" rx="0" fill="#0a0f1c"/>
+  <path d="M 4 536 H 996 V 558 A 18 18 0 0 1 978 576 H 22 A 18 18 0 0 1 4 558 Z" fill="#0a0f1c"/>
+  <rect x="4" y="536" width="992" height="2" fill="url(#bar)"/>
+  <circle cx="34" cy="556" r="4" fill="#34d399" class="pulse"/>
+  <text x="48" y="561" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#94a3b8">2 services healthy</text>
+  <text x="966" y="561" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#94a3b8">warm start  ·  1.87 s</text>
+
+  <mask id="type1">
+    <rect x="194" y="78" width="180" height="26" fill="#ffffff">
+      <animate attributeName="width" from="0" to="180" begin="0.30s" dur="0.45s" fill="freeze"/>
+    </rect>
+  </mask>
+  <mask id="type2">
+    <rect x="194" y="194" width="150" height="26" fill="#ffffff">
+      <animate attributeName="width" from="0" to="150" begin="2.05s" dur="0.40s" fill="freeze"/>
+    </rect>
+  </mask>
+  <mask id="type3">
+    <rect x="194" y="344" width="190" height="26" fill="#ffffff">
+      <animate attributeName="width" from="0" to="190" begin="4.30s" dur="0.45s" fill="freeze"/>
+    </rect>
+  </mask>
+</svg>
