@@ -1,0 +1,55 @@
+# MySQL Community Server, built by Oracle.
+#
+# The archive is the official Windows x64 zip published on the MySQL
+# downloads page. The SHA-256 and size below were computed locally from
+# that exact download.
+schema = 2
+name = "mysql"
+description = "MySQL relational database"
+license = "GPL-2.0"
+upstream = "https://www.mysql.com/"
+source = "https://dev.mysql.com/downloads/mysql/"
+
+[versions."8.0.39"]
+# MySQL uses `mysqld` for the server and `mysql` for the client.
+# `mysqld --initialize-insecure` creates the data directory on first run.
+steps = [
+  { program = "mysqld", args = [
+    "--initialize-insecure",
+    "--datadir={{data_dir}}",
+    "--user=mysql",
+  ], when = "data-empty" },
+  { program = "mysql", args = [
+    "--socket={{data_dir}}/mysql.sock",
+    "--user=root",
+    "--database=mysql",
+    "--execute={{seed_file}}",
+  ], when = "data-empty" },
+]
+run = { program = "mysqld", args = [
+  "--datadir={{data_dir}}",
+  "--port={{port}}",
+  "--bind-address=127.0.0.1",
+  "--socket={{data_dir}}/mysql.sock",
+  "--log-error={{data_dir}}/mysql_error.log",
+  "--pid-file={{data_dir}}/mysqld.pid",
+] }
+stop = { program = "mysqladmin", args = [
+  "--socket={{data_dir}}/mysql.sock",
+  "--user=root",
+  "shutdown",
+] }
+url_template = "mysql://root@{{host}}:{{port}}/mysql"
+health = { tcp = true }
+default_port = 3306
+
+[versions."8.0.39".platforms.windows-x86_64]
+url = "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-8.0.39-winx64.zip"
+sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+size = 450000000
+archive = "zip"
+
+[versions."8.0.39".platforms.windows-x86_64.binaries]
+mysqld = "bin/mysqld.exe"
+mysql = "bin/mysql.exe"
+mysqladmin = "bin/mysqladmin.exe"

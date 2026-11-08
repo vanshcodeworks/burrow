@@ -16,6 +16,9 @@ use crate::error::{suggest, ConfigError};
 pub struct Config {
     /// Project metadata.
     pub project: Project,
+    /// Package declarations keyed by name. Overrides or extends the built-in registry.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub packages: BTreeMap<String, PackageDecl>,
     /// Services keyed by name.
     #[serde(default)]
     pub services: BTreeMap<String, Service>,
@@ -27,6 +30,17 @@ pub struct Config {
 pub struct Project {
     /// Project name. Lowercase ASCII letters, digits, and hyphens.
     pub name: String,
+}
+
+/// A package declaration in `burrow.toml` that overrides or extends the built-in registry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PackageDecl {
+    /// Version to use, for example `"16"` or `"latest"`.
+    pub version: String,
+    /// Optional custom source URL for the package TOML.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 /// One service description.
@@ -263,6 +277,26 @@ impl Config {
     /// Validates names, references, limits, and the dependency graph.
     pub fn validate(&self) -> Result<(), ConfigError> {
         validate_identifier("project.name", &self.project.name)?;
+
+        // Validate package declarations
+        for (name, pkg) in &self.packages {
+            let path = format!("packages.{name}");
+            validate_identifier(&path, name)?;
+            if pkg.version.trim().is_empty() {
+                return Err(ConfigError::invalid(
+                    format!("{path}.version"),
+                    "version must not be empty",
+                ));
+            }
+            if let Some(source) = &pkg.source {
+                if !source.starts_with("https://") && !source.starts_with("file://") {
+                    return Err(ConfigError::invalid(
+                        format!("{path}.source"),
+                        "source must be an HTTPS URL or file:// path",
+                    ));
+                }
+            }
+        }
 
         if self.services.is_empty() {
             return Err(ConfigError::invalid(
@@ -656,7 +690,7 @@ fn validate_registry_reference(path: &str, reference: &str) -> Result<(), Config
     let (name, version) = reference.split_once('@').ok_or_else(|| {
         ConfigError::invalid(
             path,
-            "expected `name@version` or `container:image`, for example `postgres@16`",
+            "expected `name@version` or `container:image`, for example `mongodb@7`",
         )
     })?;
     validate_identifier(path, name)?;

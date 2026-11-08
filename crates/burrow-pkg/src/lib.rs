@@ -14,6 +14,6 @@ pub mod registry;
 pub use cache::{sha256_file, Cache, DownloadProgress, GcReport, Marker, PackageRef, VerifyReport};
 pub use error::{Error, Result};
 pub use registry::{
-    ArchiveKind, Entry, InitStep, InitWhen, PackageHealth, PackageVersion, Platform, Registry,
+    ArchiveKind, Entry, InitWhen, LifecycleStep, PackageHealth, PackageVersion, Platform, Registry,
     Resolved, TemplateCommand, REGISTRY_SCHEMA, WINDOWS_X86_64,
 };

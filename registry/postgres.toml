@@ -4,7 +4,7 @@
 # company that produces the Windows PostgreSQL installers). The SHA-256 and
 # size below were computed locally from that exact download; the download URL
 # is the same file the EnterpriseDB download page links to.
-schema = 1
+schema = 2
 name = "postgres"
 description = "PostgreSQL relational database"
 license = "PostgreSQL"
@@ -15,14 +15,25 @@ source = "https://www.enterprisedb.com/download-postgresql-binaries"
 # `initdb` creates a cluster owned by the current Windows user. `-A trust` only
 # exists inside this per-project data directory and the server is bound to
 # loopback by the `run` command below.
-init = [
+steps = [
   { program = "initdb", args = [
     "-D", "{{data_dir}}",
     "-U", "postgres",
     "-A", "trust",
     "-E", "UTF8",
     "--no-locale",
-  ] },
+  ], when = "data-empty" },
+  { program = "psql", args = [
+    "-X",
+    "-q",
+    "-v", "ON_ERROR_STOP=1",
+    "--single-transaction",
+    "-h", "{{host}}",
+    "-p", "{{port}}",
+    "-U", "postgres",
+    "-d", "postgres",
+    "-f", "{{seed_file}}",
+  ], when = "data-empty" },
 ]
 run = { program = "postgres", args = [
   "-D", "{{data_dir}}",
@@ -35,17 +46,6 @@ stop = { program = "pg_ctl", args = [
   "-m", "fast",
   "-w",
   "-t", "15",
-] }
-seed = { program = "psql", args = [
-  "-X",
-  "-q",
-  "-v", "ON_ERROR_STOP=1",
-  "--single-transaction",
-  "-h", "{{host}}",
-  "-p", "{{port}}",
-  "-U", "postgres",
-  "-d", "postgres",
-  "-f", "{{seed_file}}",
 ] }
 url_template = "postgres://postgres@{{host}}:{{port}}/postgres"
 health = { tcp = true }

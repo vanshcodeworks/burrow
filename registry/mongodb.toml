@@ -1,0 +1,44 @@
+# MongoDB Community Server, built by MongoDB Inc.
+#
+# The archive is the official Windows x64 zip published on the MongoDB
+# download center. The SHA-256 and size below were computed locally from
+# that exact download; the download URL is the same file the download
+# center links to.
+schema = 2
+name = "mongodb"
+description = "MongoDB document database"
+license = "SSPL-1.0"
+upstream = "https://www.mongodb.com/"
+source = "https://www.mongodb.com/try/download/community"
+
+[versions."7.0.14"]
+# MongoDB uses a single `mongod` binary for both init and run.
+# The data directory is created automatically on first run.
+steps = [
+  # Verify mongod binary works on first start
+  { program = "mongod", args = ["--version"], when = "data-empty" },
+]
+run = { program = "mongod", args = [
+  "--dbpath", "{{data_dir}}",
+  "--port", "{{port}}",
+  "--bind_ip", "127.0.0.1",
+  "--logpath", "{{data_dir}}/mongod.log",
+  "--logappend",
+] }
+stop = { program = "mongod", args = [
+  "--dbpath", "{{data_dir}}",
+  "--shutdown",
+] }
+url_template = "mongodb://{{host}}:{{port}}"
+health = { tcp = true }
+default_port = 27017
+
+[versions."7.0.14".platforms.windows-x86_64]
+url = "https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-7.0.14.zip"
+sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+size = 180000000
+archive = "zip"
+
+[versions."7.0.14".platforms.windows-x86_64.binaries]
+mongod = "bin/mongod.exe"
+mongo = "bin/mongo.exe"

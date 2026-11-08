@@ -793,7 +793,7 @@ mod tests {
         registry
             .add_toml(
                 r#"
-schema = 1
+schema = 2
 name = "demo"
 description = "Demo"
 license = "MIT"
@@ -802,6 +802,7 @@ source = "https://example.com/demo/downloads"
 
 [versions."1.0"]
 run = { program = "server", args = [] }
+steps = []
 
 [versions."1.0".platforms.windows-x86_64]
 url = "https://example.com/demo.zip"
@@ -1016,11 +1017,11 @@ server = "bin/server.exe"
                 args: Vec::new(),
             }),
             stop: None,
-            init: Vec::new(),
-            seed: None,
+            steps: Vec::new(),
             url_template: None,
             health: None,
             default_port: None,
+            env: BTreeMap::new(),
         };
         let entry = crate::registry::Entry {
             name: "resumedemo".to_owned(),

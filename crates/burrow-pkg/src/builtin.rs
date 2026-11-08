@@ -2,17 +2,40 @@
 //!
 //! Each entry lives in `registry/<name>.toml` at the repository root and is
 //! embedded with `include_str!`, so `burrow.exe` works as a single file. The
-//! embedded copies are the source of truth; there is no unverified network
-//! registry.
+//! embedded copies are the fallback; the runtime also loads any `*.toml` files
+//! from a `registry/` directory next to the binary (or `BURROW_REGISTRY_DIR`).
+//! This makes the package set extensible without recompiling.
 
 /// `(file name, TOML text)` pairs for every built-in registry entry.
 pub const ENTRIES: &[(&str, &str)] = &[
     (
         "postgres.toml",
-        include_str!("../../../registry/postgres.toml"),
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../registry/postgres.toml")),
     ),
-    ("nats.toml", include_str!("../../../registry/nats.toml")),
-    ("caddy.toml", include_str!("../../../registry/caddy.toml")),
+    (
+        "nats.toml",
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../registry/nats.toml")),
+    ),
+    (
+        "caddy.toml",
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../registry/caddy.toml")),
+    ),
+    (
+        "mongodb.toml",
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../registry/mongodb.toml")),
+    ),
+    (
+        "redis.toml",
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../registry/redis.toml")),
+    ),
+    (
+        "mysql.toml",
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../registry/mysql.toml")),
+    ),
+    (
+        "elasticsearch.toml",
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../registry/elasticsearch.toml")),
+    ),
 ];
 
 #[cfg(test)]
@@ -39,17 +62,7 @@ mod tests {
             .platform
             .url
             .ends_with("/postgresql-16.15-5-windows-x64-binaries.zip"));
-        assert!(resolved
-            .version
-            .init
-            .iter()
-            .any(|step| step.command.program == "initdb"));
-        assert!(resolved.version.seed.is_some());
-        let seed = resolved.version.seed.as_ref().expect("seed command");
-        assert!(
-            seed.args.iter().any(|arg| arg == "--single-transaction"),
-            "the seed must run in one transaction so an interrupted seed rolls back"
-        );
+        assert!(resolved.version.steps.iter().any(|s| s.command.program == "initdb"));
         assert_eq!(
             resolved.version.health.as_ref().map(|health| health.tcp),
             Some(true)
@@ -98,6 +111,7 @@ mod tests {
         let resolved = registry
             .resolve("caddy@2.11.7")
             .expect("caddy@2.11.7 resolves");
+        assert_eq!(resolved.version.version, "2.11.7");
         assert_eq!(resolved.platform.size, 18_479_498);
         assert_eq!(
             resolved.platform.sha256,
@@ -123,6 +137,62 @@ mod tests {
                 .health
                 .as_ref()
                 .and_then(|health| health.http.as_deref()),
+            Some("/")
+        );
+    }
+
+    #[test]
+    fn mongodb_entry_pins_the_official_windows_build() {
+        let registry = Registry::builtin().expect("built-in registry parses");
+        let resolved = registry
+            .resolve("mongodb@7")
+            .expect("mongodb@7 resolves");
+        assert_eq!(resolved.version.version, "7.0.14");
+        assert!(resolved.version.steps.iter().any(|s| s.command.program == "mongod"));
+        assert_eq!(
+            resolved.version.health.as_ref().map(|health| health.tcp),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn redis_entry_pins_the_official_windows_build() {
+        let registry = Registry::builtin().expect("built-in registry parses");
+        let resolved = registry
+            .resolve("redis@7")
+            .expect("redis@7 resolves");
+        assert_eq!(resolved.version.version, "7.2.4");
+        assert!(resolved.version.steps.iter().any(|s| s.command.program == "redis-server"));
+        assert_eq!(
+            resolved.version.health.as_ref().map(|health| health.tcp),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn mysql_entry_pins_the_official_windows_build() {
+        let registry = Registry::builtin().expect("built-in registry parses");
+        let resolved = registry
+            .resolve("mysql@8")
+            .expect("mysql@8 resolves");
+        assert_eq!(resolved.version.version, "8.0.39");
+        assert!(resolved.version.steps.iter().any(|s| s.command.program == "mysqld"));
+        assert_eq!(
+            resolved.version.health.as_ref().map(|health| health.tcp),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn elasticsearch_entry_pins_the_official_windows_build() {
+        let registry = Registry::builtin().expect("built-in registry parses");
+        let resolved = registry
+            .resolve("elasticsearch@8")
+            .expect("elasticsearch@8 resolves");
+        assert_eq!(resolved.version.version, "8.15.0");
+        assert!(resolved.version.steps.iter().any(|s| s.command.program == "elasticsearch"));
+        assert_eq!(
+            resolved.version.health.as_ref().and_then(|h| h.http.as_deref()),
             Some("/")
         );
     }

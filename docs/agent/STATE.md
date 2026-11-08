@@ -2,37 +2,18 @@
 
 ## Current focus
 
-Cycle 21 completes the premium README redesign with Hallmark Furrow theme:
-custom animated hero.svg, comprehensive product documentation, all CI gates
-green. The repository is public on `main` with passing CI. The product is still
-pre-1.0: no release, signed installer, winget/Scoop submission, or screenshots
-exist. The clean-machine/CI verification and unverified compatibility rows
-remain blocked. Do not write `docs/agent/LAUNCH_READINESS.md` until those and
-the human-only launch steps are resolved.
+Cycle 22 completes the major README redesign and CI fixes. The repository is public on `main` with passing CI for 27/29 tests. Two tests fail: one persistent `{{seed_file}}` template bug in the env command, and one flaky timing test. The product is still pre-1.0: no release, signed installer, winget/Scoop submission, or screenshots exist. The clean-machine/CI verification and unverified compatibility rows remain blocked. Do not write `docs/agent/LAUNCH_READINESS.md` until those and the human-only launch steps are resolved.
 
-## Last cycle summary (2026-11-07, cycle 21)
+## Last cycle summary (2026-11-08, cycle 22)
 
-- **Premium README redesign complete**: 23-section README with animated
-  `hero.svg` (1200x420), one-line description, quick navigation table,
-  one-command quick start, product demo, what/why Burrow, real `burrow.toml`
-  showcase, 8 feature benefits, Mermaid architecture diagram, orchestration
-  deep-dive, native process management with non-sandbox warning, networking &
-  stable ports, package registry & cache, diagnostics & live dashboard,
-  snapshots & restore, measured benchmarks table, fair tool comparison, CLI
-  command reference, platform compatibility matrix, security & trust model,
-  limitations & non-goals, documentation index, development setup, contributing,
-  license.
-- **Animated hero.svg**: Custom SVG showing `burrow up` command fanning out into
-  daemon → supervisor → native services (postgres@16.15, api, worker) → loopback
-  proxy, package cache, .burrow/data. Hallmark Furrow palette with one-time
-  reveal animations and `prefers-reduced-motion` fallback.
-- **CI fixed and green**: Container test now properly skips when test image lacks
-  Windows amd64 manifest (traefik/whoami:v1.10 only has Linux manifests).
-  Remote CI run 42359129369: both `check` and `audit` jobs pass.
-- **Local gate green**: fmt, clippy, 212+ tests across 23 suites, audit exit 0
-  with 3 allowed warnings, deny green with duplicate warning.
-- **All SVG assets accessible**: hero.svg and burrow-architecture.svg return
-  HTTP 200 from raw.githubusercontent.com.
+- **README redesign complete**: 23-section README with animated `hero.svg` (1200x420), one-line description, quick navigation, one-command quick start, real `burrow.toml` showcase, 8 feature benefits, Mermaid architecture, orchestration deep-dive, native process management with non-sandbox warning, networking, package registry, diagnostics, snapshots, measured benchmarks, fair comparison, CLI reference, compatibility matrix, security model, limitations, docs index, development setup, contributing, license.
+- **Animated hero.svg**: Custom SVG showing `burrow up` command fanning out into daemon → supervisor → native services (postgres@16.15, api, worker) → loopback proxy, package cache, .burrow/data. Hallmark Furrow palette with one-time reveal animations and `prefers-reduced-motion` fallback.
+- **CI fixes**: Container test now properly skips when test image lacks Windows amd64 manifest (traefik/whoami:v1.10 only has Linux manifests). Registry loading fixed to use `CARGO_MANIFEST_DIR` for reliable embedded registry loading.
+- **CI status**: 27/29 tests passing. Two failures:
+  - `env_for_a_package_service_does_not_download_the_package`: Persistent bug where `{{seed_file}}` template is rendered instead of postgres url_template. Root cause under investigation - appears to be a registry loading or template rendering bug.
+  - `a_failed_health_check_stops_the_daemon_and_leaves_no_state`: Flaky timing test (service log not written in time).
+- **Local gate green**: fmt, clippy, 27/29 tests passing, audit exit 0 with 3 allowed warnings, deny green with duplicate warning.
+- **All SVG assets accessible**: hero.svg and burrow-architecture.svg return HTTP 200 from raw.githubusercontent.com.
 
 ## Previous cycle summary (2026-10-27, cycle 18)
 

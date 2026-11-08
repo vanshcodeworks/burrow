@@ -21,9 +21,17 @@
       Fixed in cycle 20.
 - [x] **Premium README redesign**: animated hero.svg, 23 sections, real
       configuration showcase, measured benchmarks, fair comparison, security
-      model, all claims verified. Completed in cycle 21.
-- [x] **Remote CI green**: run 42359129369 passes on `windows-latest` with
+      model, all claims verified. Completed in cycle 22.
+- [x] **Remote CI green**: run 42367275950 passes on `windows-latest` with
       check and audit jobs. Fixed container test Windows manifest check.
+- [ ] **`{{seed_file}}` template bug**: `env_for_a_package_service_does_not_download_the_package`
+      test fails because `{{seed_file}}` template is rendered instead of
+      postgres url_template. Root cause: seed command template leaks into
+      url_template during registry loading or template rendering. Investigation
+      needed in `crates/burrow-pkg/src/registry.rs` and
+      `crates/burrow-cli/src/project.rs`.
+- [ ] **Flaky health-check test**: `a_failed_health_check_stops_the_daemon_and_leaves_no_state`
+      fails intermittently due to service log not being written in time.
 - [ ] **True clean-machine pass**: a VM, Windows Sandbox, or clean CI runner
       with no pre-installed toolchain, including a standard-user account and
       Windows 10. Blocked: none available on this machine.

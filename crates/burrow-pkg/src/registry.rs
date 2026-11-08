@@ -1,9 +1,11 @@
-//! Registry parsing, validation, and version resolution.
+//! Registry parsing, validation, and version resolution for Burrow packages.
 //!
 //! A registry document is one TOML file per service. The built-in entries are
-//! embedded at compile time, so a single `burrow.exe` can install packages
-//! without a side-car data directory. Every entry carries the exact upstream
-//! URL, size, and SHA-256 for its artifacts.
+//! embedded at compile time as a fallback, but the runtime also loads any
+//! `*.toml` files from a `registry/` directory next to the binary (or
+//! `BURROW_REGISTRY_DIR`). This makes the package set extensible without
+//! recompiling. Every entry carries the exact upstream URL, size, and SHA-256
+//! for its artifacts, plus generic lifecycle hooks.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -14,7 +16,7 @@ use serde::Deserialize;
 use crate::error::{Error, Result};
 
 /// Registry schema version understood by this build.
-pub const REGISTRY_SCHEMA: u32 = 1;
+pub const REGISTRY_SCHEMA: u32 = 2;
 /// Platform key used for Windows x86-64 artifacts.
 pub const WINDOWS_X86_64: &str = "windows-x86_64";
 
@@ -70,24 +72,29 @@ pub enum InitWhen {
     /// Run only when the service's data directory is missing or empty.
     #[default]
     DataEmpty,
+    /// Run before every start (e.g., migrations).
+    BeforeStart,
 }
 
 /// A command template stored in the registry.
 ///
 /// `program` names a role in the platform's `binaries` map. Arguments may use
 /// `{{port}}`, `{{host}}`, `{{data_dir}}`, `{{project_dir}}`, `{{password}}`,
-/// and `{{seed_file}}`; the CLI substitutes them without a shell.
+/// `{{seed_file}}`, and `{{config_dir}}`; the CLI substitutes them without a shell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TemplateCommand {
-    /// Binary role, for example `postgres`.
+    /// Binary role, for example `mongod` or `redis-server`.
     pub program: String,
     /// Arguments with optional placeholders.
     pub args: Vec<String>,
 }
 
-/// One required initialization step.
+/// A generic lifecycle step.
+///
+/// The `when` field controls when the step runs. The registry can declare
+/// any number of steps; they execute in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InitStep {
+pub struct LifecycleStep {
     /// Command to run.
     pub command: TemplateCommand,
     /// Gate for running it.
@@ -129,23 +136,22 @@ pub struct PackageVersion {
     pub run: Option<TemplateCommand>,
     /// Optional graceful stop command.
     pub stop: Option<TemplateCommand>,
-    /// Required initialization steps, in order.
-    pub init: Vec<InitStep>,
-    /// Optional database seed command; `{{seed_file}}` is replaced by the
-    /// project's `seed` path.
-    pub seed: Option<TemplateCommand>,
+    /// Lifecycle steps (init, migrations, etc.) in order.
+    pub steps: Vec<LifecycleStep>,
     /// URL template for `{{service.url}}` and `{{service.password}}` users.
     pub url_template: Option<String>,
     /// Health check advertised by the package.
     pub health: Option<PackageHealth>,
     /// Suggested port (Burrow still allocates by default).
     pub default_port: Option<u16>,
+    /// Environment variables set by the package on start (e.g., generated passwords).
+    pub env: BTreeMap<String, TemplateCommand>,
 }
 
 /// One registry entry, which may contain several versions.
 #[derive(Debug, Clone)]
 pub struct Entry {
-    /// Package name, for example `postgres`.
+    /// Package name, for example `postgres` or `mongodb`.
     pub name: String,
     /// One-line description.
     pub description: String,
@@ -196,14 +202,14 @@ impl Resolved<'_> {
     }
 }
 
-/// All built-in registry entries plus any environment-provided overrides.
+/// All built-in registry entries plus any directory-provided overrides.
 #[derive(Debug, Clone, Default)]
 pub struct Registry {
     entries: BTreeMap<String, Entry>,
 }
 
 impl Registry {
-    /// Parses the entries embedded in this binary.
+    /// Parses the entries embedded in this binary (fallback when no registry dir).
     pub fn builtin() -> Result<Self> {
         let mut registry = Self::default();
         for (label, text) in crate::builtin::ENTRIES {
@@ -226,6 +232,9 @@ impl Registry {
     }
 
     /// Loads every `*.toml` file in `directory`, sorted by file name.
+    ///
+    /// This is the primary way to extend Burrow with new packages: drop a
+    /// `package-name.toml` file into the registry directory.
     pub fn load_directory(&mut self, directory: &std::path::Path) -> Result<()> {
         let mut files = Vec::new();
         let entries = std::fs::read_dir(directory).map_err(|error| Error::io(directory, error))?;
@@ -391,16 +400,16 @@ struct RawVersion {
     run: Option<RawCommand>,
     #[serde(default)]
     stop: Option<RawCommand>,
-    #[serde(default)]
-    init: Vec<RawInit>,
-    #[serde(default)]
-    seed: Option<RawCommand>,
+    #[serde(default, alias = "init")]
+    steps: Vec<RawLifecycleStep>,
     #[serde(default)]
     url_template: Option<String>,
     #[serde(default)]
     health: Option<RawHealth>,
     #[serde(default)]
     default_port: Option<u16>,
+    #[serde(default)]
+    env: BTreeMap<String, RawCommand>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -424,7 +433,7 @@ struct RawCommand {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawInit {
+struct RawLifecycleStep {
     program: String,
     #[serde(default)]
     args: Vec<String>,
@@ -437,6 +446,7 @@ struct RawInit {
 enum RawInitWhen {
     #[default]
     DataEmpty,
+    BeforeStart,
 }
 
 #[derive(Debug, Deserialize)]
@@ -565,17 +575,17 @@ fn convert_version(name: &str, key: &str, raw: RawVersion) -> Result<PackageVers
     };
     let run = raw.run.map(convert_command);
     let stop = raw.stop.map(convert_command);
-    let seed = raw.seed.map(convert_command);
-    let init: Vec<InitStep> = raw
-        .init
+    let steps: Vec<LifecycleStep> = raw
+        .steps
         .into_iter()
-        .map(|step| InitStep {
+        .map(|step| LifecycleStep {
             command: TemplateCommand {
                 program: step.program,
                 args: step.args,
             },
             when: match step.when {
                 RawInitWhen::DataEmpty => InitWhen::DataEmpty,
+                RawInitWhen::BeforeStart => InitWhen::BeforeStart,
             },
         })
         .collect();
@@ -584,13 +594,23 @@ fn convert_version(name: &str, key: &str, raw: RawVersion) -> Result<PackageVers
     for command in run
         .iter()
         .chain(stop.iter())
-        .chain(seed.iter())
-        .chain(init.iter().map(|step| &step.command))
+        .chain(steps.iter().map(|step| &step.command))
     {
         if let Some(platform) = platform {
             if !platform.binaries.contains_key(&command.program) {
                 return Err(fail(format!(
                     "command refers to binary role `{}` which is missing from `binaries`",
+                    command.program
+                )));
+            }
+        }
+    }
+    // Also validate env commands
+    for (_, command) in &raw.env {
+        if let Some(platform) = platform {
+            if !platform.binaries.contains_key(&command.program) {
+                return Err(fail(format!(
+                    "env command refers to binary role `{}` which is missing from `binaries`",
                     command.program
                 )));
             }
@@ -605,19 +625,25 @@ fn convert_version(name: &str, key: &str, raw: RawVersion) -> Result<PackageVers
         }
     }
 
+    let env: BTreeMap<String, TemplateCommand> = raw
+        .env
+        .into_iter()
+        .map(|(k, v)| (k, convert_command(v)))
+        .collect();
+
     Ok(PackageVersion {
         version: key.to_owned(),
         platforms,
         run,
         stop,
-        init,
-        seed,
+        steps,
         url_template: raw.url_template,
         health: raw.health.map(|health| PackageHealth {
             tcp: health.tcp,
             http: health.http,
         }),
         default_port: raw.default_port,
+        env,
     })
 }
 
@@ -707,10 +733,10 @@ fn is_reserved_windows_name(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{ArchiveKind, Registry, WINDOWS_X86_64};
+    use super::{ArchiveKind, InitWhen, Registry, WINDOWS_X86_64};
 
     const SAMPLE: &str = r#"
-schema = 1
+schema = 2
 name = "demo"
 description = "Demo service"
 license = "MIT"
@@ -721,8 +747,12 @@ source = "https://example.com/demo/downloads"
 url_template = "tcp://{{host}}:{{port}}"
 health = { tcp = true }
 run = { program = "server", args = ["--port", "{{port}}"] }
-init = [{ program = "init", args = ["--data", "{{data_dir}}"] }]
 stop = { program = "stop", args = [] }
+steps = [
+  { program = "init", args = ["--data", "{{data_dir}}"], when = "data-empty" },
+  { program = "migrate", args = ["up"], when = "before-start" },
+]
+env = { PASSWORD = { program = "genpass", args = [] } }
 
 [versions."1.2".platforms.windows-x86_64]
 url = "https://example.com/demo-1.2.zip"
@@ -734,10 +764,13 @@ archive = "zip"
 server = "bin/server.exe"
 init = "bin/init.exe"
 stop = "bin/stop.exe"
+migrate = "bin/migrate.exe"
+genpass = "bin/genpass.exe"
 
 [versions."1.10"]
 url_template = "tcp://{{host}}:{{port}}"
 run = { program = "server", args = [] }
+steps = [{ program = "init", args = ["--data", "{{data_dir}}"] }]
 
 [versions."1.10".platforms.windows-x86_64]
 url = "https://example.com/demo-1.10.zip"
@@ -747,6 +780,7 @@ archive = "zip"
 
 [versions."1.10".platforms.windows-x86_64.binaries]
 server = "bin/server.exe"
+init = "bin/init.exe"
 "#;
 
     fn registry() -> Registry {
@@ -800,7 +834,7 @@ server = "bin/server.exe"
             "a".repeat(64),
             "hash must be lowercase"
         );
-        assert_eq!(resolved.platform.binaries.len(), 3);
+        assert_eq!(resolved.platform.binaries.len(), 5);
         let root = std::path::Path::new(r"C:\cache");
         let binary = resolved
             .binary_path(root, "server")
@@ -846,7 +880,7 @@ server = "bin/server.exe"
     #[test]
     fn unsupported_native_entries_explain_the_fallback() {
         let text = r#"
-schema = 1
+schema = 2
 name = "redis"
 description = "Redis-compatible server"
 license = "AGPL-3.0"
@@ -861,5 +895,27 @@ unsupported_native = "no official Windows build; use a container or Memurai"
         assert!(!text.is_empty());
         assert!(text.contains("not supported natively"), "{text}");
         assert!(text.contains("container"), "{text}");
+    }
+
+    #[test]
+    fn lifecycle_steps_preserve_order_and_when() {
+        let registry = registry();
+        let resolved = registry.resolve("demo@1.2").expect("resolve");
+        let steps = &resolved.version.steps;
+        assert_eq!(steps.len(), 2);
+        assert_eq!(steps[0].command.program, "init");
+        assert_eq!(steps[0].when, InitWhen::DataEmpty);
+        assert_eq!(steps[1].command.program, "migrate");
+        assert_eq!(steps[1].when, InitWhen::BeforeStart);
+    }
+
+    #[test]
+    fn env_templates_are_parsed() {
+        let registry = registry();
+        let resolved = registry.resolve("demo@1.2").expect("resolve");
+        let env = &resolved.version.env;
+        assert_eq!(env.len(), 1);
+        assert!(env.contains_key("PASSWORD"));
+        assert_eq!(env["PASSWORD"].program, "genpass");
     }
 }

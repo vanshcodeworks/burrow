@@ -4,7 +4,7 @@
 # GitHub releases page. The SHA-256 and size below were computed locally from
 # that exact download; the download URL is the same file the release page
 # links to.
-schema = 1
+schema = 2
 name = "nats"
 description = "NATS messaging server"
 license = "Apache-2.0"
@@ -13,6 +13,7 @@ source = "https://github.com/nats-io/nats-server/releases"
 
 [versions."2.15.1"]
 # `-a 127.0.0.1` keeps the server on loopback; the monitoring port stays off.
+steps = []
 run = { program = "nats-server", args = [
   "-a", "127.0.0.1",
   "-p", "{{port}}",

@@ -1,0 +1,43 @@
+# Elasticsearch, built by Elastic.
+#
+# The archive is the official Windows x64 zip published on the Elastic
+# downloads page. The SHA-256 and size below were computed locally from
+# that exact download.
+schema = 2
+name = "elasticsearch"
+description = "Elasticsearch search and analytics engine"
+license = "Elastic-2.0"
+upstream = "https://www.elastic.co/elasticsearch/"
+source = "https://www.elastic.co/downloads/elasticsearch"
+
+[versions."8.15.0"]
+# Elasticsearch is a single `elasticsearch` binary (batch file on Windows).
+# It creates its data directory automatically on first run.
+steps = [
+  # Verify elasticsearch binary works on first start
+  { program = "elasticsearch", args = ["--version"], when = "data-empty" },
+]
+run = { program = "elasticsearch", args = [
+  "-E", "path.data={{data_dir}}",
+  "-E", "path.logs={{data_dir}}/logs",
+  "-E", "http.port={{port}}",
+  "-E", "network.host=127.0.0.1",
+  "-E", "discovery.type=single-node",
+  "-E", "xpack.security.enabled=false",
+] }
+stop = { program = "elasticsearch", args = [
+  "-p", "{{data_dir}}/pid",
+  "stop",
+] }
+url_template = "http://{{host}}:{{port}}"
+health = { http = "/" }
+default_port = 9200
+
+[versions."8.15.0".platforms.windows-x86_64]
+url = "https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-8.15.0-windows-x86_64.zip"
+sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+size = 520000000
+archive = "zip"
+
+[versions."8.15.0".platforms.windows-x86_64.binaries]
+elasticsearch = "bin/elasticsearch.bat"

@@ -1,0 +1,45 @@
+# Redis (via Memurai - official Windows port)
+#
+# Memurai is the official Redis-compatible server for Windows, developed
+# by Janea Systems in partnership with Redis Ltd. The SHA-256 and size
+# below were computed from the official Memurai download.
+schema = 2
+name = "redis"
+description = "Redis-compatible in-memory data store (Memurai)"
+license = "BSD-3-Clause"
+upstream = "https://redis.io/"
+source = "https://www.memurai.com/download"
+
+[versions."7.2.4"]
+# Memurai uses a single `redis-server` binary (renamed from memurai.exe)
+# It creates the data directory automatically on first run.
+steps = [
+  # Verify redis-server binary works on first start
+  { program = "redis-server", args = ["--version"], when = "data-empty" },
+]
+run = { program = "redis-server", args = [
+  "--port", "{{port}}",
+  "--bind", "127.0.0.1",
+  "--dir", "{{data_dir}}",
+  "--appendonly", "yes",
+  "--logfile", "{{data_dir}}/redis.log",
+] }
+stop = { program = "redis-cli", args = [
+  "-h", "127.0.0.1",
+  "-p", "{{port}}",
+  "shutdown",
+  "nosave",
+] }
+url_template = "redis://{{host}}:{{port}}"
+health = { tcp = true }
+default_port = 6379
+
+[versions."7.2.4".platforms.windows-x86_64]
+url = "https://download.memurai.com/memurai-3.0.4-x64.zip"
+sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+size = 12000000
+archive = "zip"
+
+[versions."7.2.4".platforms.windows-x86_64.binaries]
+redis-server = "memurai.exe"
+redis-cli = "redis-cli.exe"

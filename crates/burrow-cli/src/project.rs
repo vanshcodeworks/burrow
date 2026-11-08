@@ -10,7 +10,7 @@ use anyhow::{bail, Context, Result};
 use burrow_config::{Config, HealthKind, RestartPolicy, Service, StartupPlan, LOCAL_CONFIG_FILE};
 use burrow_net::PortAllocator;
 use burrow_pkg::{
-    Cache, DownloadProgress, InitStep, PackageHealth, PackageRef, Registry, TemplateCommand,
+    Cache, DownloadProgress, InitWhen, LifecycleStep, PackageHealth, PackageRef, Registry, TemplateCommand,
 };
 use burrow_supervisor::{HealthCheck, HealthOptions, ProcessSpec};
 use serde::{Deserialize, Serialize};
@@ -223,8 +223,8 @@ struct InstalledPackage {
     url_template: Option<String>,
     run: TemplateCommand,
     stop: Option<TemplateCommand>,
-    init: Vec<InitStep>,
-    seed: Option<TemplateCommand>,
+    steps: Vec<LifecycleStep>,
+    seed: Option<TemplateCommand>, // Kept for backward compat, extracted from steps
     health: Option<PackageHealth>,
     binaries: BTreeMap<String, String>,
 }
@@ -503,8 +503,11 @@ async fn install_packages(
                 url_template: resolved.version.url_template.clone(),
                 run,
                 stop: resolved.version.stop.clone(),
-                init: resolved.version.init.clone(),
-                seed: resolved.version.seed.clone(),
+                steps: resolved.version.steps.clone(),
+                seed: resolved.version.env.get("SEED").map(|c| c.clone()) // backward compat
+                    .or_else(|| resolved.version.steps.iter()
+                        .find(|s| s.command.program == "seed")
+                        .map(|s| s.command.clone())),
                 health: resolved.version.health.clone(),
                 binaries: resolved.platform.binaries.clone(),
             },
@@ -834,19 +837,28 @@ fn build_package_plan(
     let data_dir = project.data_dir(service_name);
     let mut vars = package_vars(project, service_name, port, password, None);
 
-    let mut init = Vec::with_capacity(package.init.len());
-    for step in &package.init {
-        init.push(prepare_command(
-            package,
-            &step.command,
-            &vars,
-            password,
-            require_binaries,
-        )?);
+    // Run steps with when = DataEmpty as init
+    let mut init = Vec::new();
+    for step in &package.steps {
+        if matches!(step.when, InitWhen::DataEmpty) {
+            init.push(prepare_command(
+                package,
+                &step.command,
+                &vars,
+                password,
+                require_binaries,
+            )?);
+        }
     }
 
+    // Find seed step (when = DataEmpty with program "seed" or similar)
+    let seed_step = package.steps.iter().find(|s| 
+        matches!(s.when, InitWhen::DataEmpty) && 
+        (s.command.program == "seed" || s.command.program == "psql" || s.command.program == "migrate")
+    );
+
     let (seed, seed_file, seed_sha256) =
-        if let (Some(command), Some(relative)) = (&package.seed, &service.seed) {
+        if let (Some(step), Some(relative)) = (seed_step, &service.seed) {
             let path = project.dir.join(relative);
             if !path.is_file() {
                 bail!(
@@ -857,10 +869,10 @@ fn build_package_plan(
             vars.insert("seed_file", path.to_string_lossy().into_owned());
             let hash = burrow_data::hash_file(&path)
                 .map_err(|error| anyhow::anyhow!("service `{service_name}`: {error}"))?;
-            let prepared = prepare_command(package, command, &vars, password, require_binaries)?;
+            let prepared = prepare_command(package, &step.command, &vars, password, require_binaries)?;
             (Some(prepared), Some(path), Some(hash))
         } else {
-            if service.seed.is_some() && package.seed.is_none() {
+            if service.seed.is_some() && seed_step.is_none() {
                 tracing::warn!(
                     service = service_name,
                     "package has no seed command; ignoring the configured seed script"

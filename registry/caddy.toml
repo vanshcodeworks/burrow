@@ -3,7 +3,7 @@
 # The archive is the official windows_amd64 zip published on the Caddy GitHub
 # releases page. The SHA-256 and size below were computed locally from that
 # exact download; the download URL is the same file the release page links to.
-schema = 1
+schema = 2
 name = "caddy"
 description = "Caddy web server as a static file server"
 license = "Apache-2.0"
@@ -13,6 +13,7 @@ source = "https://github.com/caddyserver/caddy/releases"
 [versions."2.11.7"]
 # Serves .burrow/data/<service> with a directory listing, so snapshots and
 # restores cover the served files.
+steps = []
 run = { program = "caddy", args = [
   "file-server",
   "--listen", "{{host}}:{{port}}",
