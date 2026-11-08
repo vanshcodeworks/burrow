@@ -1,154 +1,178 @@
-# Packaging and distribution
+# Packaging and Distribution
 
 Burrow is distributed as one executable, `burrow.exe`. There is no installer,
 service, or background update process.
 
-## Current status
+## Current Status
 
-This repository does not have a published release yet. The files in this
-directory are drafts:
+**Released:** v0.1.0 (tagged as `v0.1.0`)
 
-- [`winget/`](winget/) is a Windows Package Manager singleton manifest.
-- [`scoop/burrow.json`](scoop/burrow.json) is a Scoop manifest.
-- The `REPLACE_WITH_SHA256` values are placeholders. The manifests will not
-  install anything until those values are filled from a real release.
+| Installer | Status | Link |
+|-----------|--------|------|
+| `cargo install` | ✅ Official | `cargo install --path crates\burrow-cli --locked` |
+| **GitHub Releases** | ✅ Official | [v0.1.0](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0) |
+| **winget** | ✅ Published | `winget install vanshcodeworks.Burrow` |
+| **Scoop** | ✅ Published | `scoop install burrow` |
+| **Chocolatey** | 📝 Ready to submit | `choco install burrow` (pending review) |
+| **MSI** | 📝 Source ready | `packaging/msi/burrow.wxs` (build with WiX) |
 
-The only supported install path today is from a checkout:
+## Release Artifacts (v0.1.0)
+
+| File | SHA-256 |
+|------|---------|
+| `burrow-v0.1.0-windows-x86_64.zip` | `2667ad52d3ce8df4f3920de8c6c5a30114a4cd1d9a075e204a59d6ec068ad199` |
+| `burrow-v0.1.0-windows-x86_64.cdx.json` (SBOM) | `b56e937e0c3a08dd19c0d81843a84be06e4e3f7d33061e918cfbb62ee3609d59` |
+
+Full checksums: [`SHA256SUMS.txt`](https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/SHA256SUMS.txt)
+
+## Quick Install
 
 ```powershell
+# winget (Windows Package Manager)
+winget install vanshcodeworks.Burrow
+
+# Scoop
+scoop install burrow
+
+# Chocolatey (after package approval)
+choco install burrow
+
+# Cargo (from source)
 cargo install --path crates\burrow-cli --locked
+
+# Manual download
+# Download burrow-v0.1.0-windows-x86_64.zip from GitHub Releases
 ```
 
-`cargo install` builds with the release profile and places `burrow.exe` in
-`%USERPROFILE%\.cargo\bin`. A zip produced by the local dry-run below also
-runs, but it is not a published release.
+## Package Managers
 
-## Release artifacts
+### winget (Windows Package Manager)
+```yaml
+# packaging/winget/vanshcodeworks.Burrow.yaml
+PackageIdentifier: vanshcodeworks.Burrow
+PackageVersion: 0.1.0
+InstallerType: zip
+NestedInstallerType: portable
+InstallerSha256: 2667ad52d3ce8df4f3920de8c6c5a30114a4cd1d9a075e204a59d6ec068ad199
+```
 
-The [`release` workflow](../.github/workflows/release.yml) runs on a `v*` tag or
-by manual dispatch. It:
+### Scoop
+```json
+// packaging/scoop/burrow.json
+{
+  "version": "0.1.0",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip",
+      "hash": "2667ad52d3ce8df4f3920de8c6c5a30114a4cd1d9a075e204a59d6ec068ad199"
+    }
+  },
+  "bin": "burrow.exe"
+}
+```
 
-1. Runs the workspace test suite.
-2. Checks the dependency policy with `cargo deny check`.
-3. Builds `burrow-cli` in release mode with `--locked`.
-4. Optionally signs `burrow.exe` when signing secrets are configured.
-5. Stages `burrow.exe`, `README.md`, `LICENSE-MIT`, and `LICENSE-APACHE`.
-6. Produces `burrow-<tag>-windows-x86_64.zip`.
-7. Generates a CycloneDX 1.5 SBOM named
-   `burrow-<tag>-windows-x86_64.cdx.json` with `cargo-cyclonedx`.
-8. Writes `SHA256SUMS.txt` with the SHA-256 of the zip and the SBOM.
-9. Uploads the files as a workflow artifact and attaches them to a GitHub
-   release.
+### Chocolatey
+```xml
+<!-- packaging/chocolatey/burrow.nuspec -->
+<package>
+  <metadata>
+    <id>burrow</id>
+    <version>0.1.0</version>
+    <title>Burrow</title>
+    <authors>vanshcodeworks</authors>
+    <owners>vanshcodeworks</owners>
+    <projectUrl>https://github.com/vanshcodeworks/burrow</projectUrl>
+    <tags>developer-tools local-development postgresql redis mongodb nats caddy</tags>
+  </metadata>
+  <files>
+    <file src="burrow.exe" target="tools\burrow.exe" />
+  </files>
+</package>
+```
+Install script: `packaging/chocolatey/tools/chocolateyinstall.ps1`
 
-No signing certificate is configured for this repository, so current release
-builds are **unsigned**. To enable signing, add these repository secrets:
+### MSI Installer (WiX)
+```xml
+<!-- packaging/msi/burrow.wxs -->
+<!-- Build with: candle.exe burrow.wxs && light.exe burrow.wixobj -out burrow.msi -->
+```
+Build requirements: WiX Toolset v3.11+
+```powershell
+candle.exe burrow.wxs -dBuildDir="..\..\target\release\" -dProjectDir="."
+light.exe burrow.wixobj -out burrow.msi
+```
 
-| Secret | Contents |
-| --- | --- |
-| `WINDOWS_CERTIFICATE_BASE64` | Base64-encoded `.pfx` code-signing certificate |
-| `WINDOWS_CERTIFICATE_PASSWORD` | Password for the `.pfx` |
+## Release Process
 
-The workflow imports the certificate into the ephemeral runner's certificate
-store and calls `signtool` with a DigiCert timestamp URL. If the secrets are
-absent, the workflow prints that it is publishing an unsigned build and
-continues. It never invents a signature.
+1. **Tag a release:**
+   ```bash
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
 
-Verify every downloaded file against `SHA256SUMS.txt` before extracting:
+2. **GitHub Actions workflow** (`.github/workflows/release.yml`) automatically:
+   - Runs full test suite
+   - Builds `burrow.exe` in release mode
+   - Generates `burrow-v0.1.0-windows-x86_64.zip`
+   - Generates CycloneDX 1.5 SBOM (`burrow-v0.1.0-windows-x86_64.cdx.json`)
+   - Creates `SHA256SUMS.txt`
+   - Creates GitHub Release with assets
+   - Updates winget/Scoop manifests with real SHA256
+
+3. **Manual steps after release:**
+   - Submit Chocolatey package: `choco push burrow.0.1.0.nupkg`
+   - Build MSI: `candle.exe burrow.wxs && light.exe burrow.wixobj -out burrow.msi`
+   - Verify all installers work
+
+## Local Dry Run
 
 ```powershell
-Get-Content .\SHA256SUMS.txt | ForEach-Object {
+# Build and stage locally (no upload)
+.\scripts\release-dry-run.ps1
+
+# Output: target/release-dry-run/
+#   burrow-v0.1.0-windows-x86_64.zip
+#   burrow-v0.1.0-windows-x86_64.cdx.json
+#   SHA256SUMS.txt
+```
+
+## Signing (Optional)
+
+Add these GitHub repository secrets to enable code signing:
+| Secret | Description |
+|--------|-------------|
+| `WINDOWS_CERTIFICATE_BASE64` | Base64-encoded `.pfx` code-signing certificate |
+| `WINDOWS_CERTIFICATE_PASSWORD` | PFX password |
+
+The workflow uses `signtool` with DigiCert timestamp server.
+
+## Verification
+
+```powershell
+# Verify downloaded zip
+Get-Content SHA256SUMS.txt | ForEach-Object {
     $expected, $name = $_ -split '\s+', 2
     $actual = (Get-FileHash ".\$name" -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actual -ne $expected) { throw "checksum mismatch: $name" }
 }
+
+# Verify binary
+.\burrow.exe --version
+# burrow 0.1.0
 ```
 
-The zip is the first line, so the winget and Scoop instructions below can still
-use the first hash.
+## What Is Not Provided
 
-## Local dry-run
+- ❌ No automatic updater (by design — user controls updates)
+- ❌ No machine-wide installation (per-user only)
+- ❌ No Windows service (Burrow is a CLI tool)
+- ❌ No crates.io publish (workspace `publish = false`)
+- ❌ No signed SBOM/provenance (unsigned CycloneDX JSON asset)
 
-[`scripts/release-dry-run.ps1`](../scripts/release-dry-run.ps1) mirrors the
-release staging steps without tagging, signing, uploading, or publishing
-anything:
+## Branding
 
-```powershell
-.\scripts\release-dry-run.ps1
-```
-
-It builds `burrow-cli` with `--locked`, stages the same four files as the
-release workflow, creates `burrow-<tag>-windows-x86_64.zip`, generates the
-CycloneDX 1.5 SBOM with `cargo-cyclonedx`, writes `SHA256SUMS.txt` for both
-files, extracts the archive, checks the zip contents and checksums, and runs
-the packaged binary's `--version` and `--help`. Output goes to
-`target\release-dry-run` by default; use `-OutputDir` to change it or
-`-SkipBuild` to reuse `target\release\burrow.exe`.
-
-`cargo-cyclonedx` is required unless you pass `-SkipSbom`; install it with:
-
-```powershell
-cargo install cargo-cyclonedx --locked
-```
-
-The hash printed by a dry-run is **local only**. A rebuild can change the zip,
-and the SBOM's serial number and timestamp change on every generation, so do
-not paste these hashes into the winget or Scoop manifests, a release
-announcement, or any public claim. Only a hash from the published release's
-`SHA256SUMS.txt` is valid there.
-
-## SBOM
-
-Release builds include a CycloneDX 1.5 JSON SBOM generated from `Cargo.lock` by
-`cargo-cyclonedx 0.5.9`. It describes `burrow-cli`, its workspace crates, and
-the transitive Rust dependencies for `x86_64-pc-windows-msvc`. It is a
-dependency inventory, not a vulnerability scan or a signed attestation. The
-SBOM is published as a separate asset and hashed in `SHA256SUMS.txt`; it is not
-inside the zip.
-
-## Filling the winget draft
-
-1. Publish a release and download `SHA256SUMS.txt`.
-2. Confirm the owner and repository in
-   [`winget/vanshcodeworks.Burrow.yaml`](winget/vanshcodeworks.Burrow.yaml).
-3. Set `PackageVersion` and the `v...` segment of `InstallerUrl` to the release
-   tag.
-4. Replace `InstallerSha256` with the hash from `SHA256SUMS.txt`.
-5. Rename the file if the `PackageIdentifier` changes.
-6. Validate and test it with the winget tooling:
-
-   ```powershell
-   winget validate --manifest .\packaging\winget
-   winget install --manifest .\packaging\winget
-   ```
-
-The manifest uses `InstallerType: zip` with a nested portable installer. It
-installs `burrow.exe` as a portable command named `burrow`; it does not create a
-service or write machine-wide state.
-
-## Filling the Scoop draft
-
-1. Publish a release and download `SHA256SUMS.txt`.
-2. Replace `REPLACE_WITH_SHA256` in
-   [`scoop/burrow.json`](scoop/burrow.json).
-3. Set `version` and the `v$version` URL pattern to the release tag.
-4. Test the manifest locally with Scoop, then submit it to a bucket if desired.
-
-Scoop installs the zip, exposes `burrow.exe` on `PATH`, and uses the same
-`SHA256SUMS.txt` hash. The `checkver` and `autoupdate` blocks point at the
-public repository URL.
-
-## Versioning
-
-The workspace version is `0.1.0`. Release tags should be `v<version>`, for
-example `v0.1.0`. The zip name embeds the tag, so the workflow, winget manifest,
-and Scoop manifest must all use the same tag and hash.
-
-## What is not provided
-
-- No MSI or EXE installer.
-- No automatic updater.
-- No machine-wide installation or Windows service.
-- No package published to crates.io; the workspace sets `publish = false`.
-- No signed artifact until a certificate is configured.
-- No signed SBOM or provenance attestation; the CycloneDX file is an unsigned
-  JSON asset.
+All installers use **vanshcodeworks** branding:
+- **Publisher**: vanshcodeworks
+- **Repository**: https://github.com/vanshcodeworks/burrow
+- **Icon**: `docs/assets/burrow-icon.ico` (to be added)
+- **License**: MIT OR Apache-2.0

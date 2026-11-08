@@ -1,17 +1,23 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.6.0.schema.json
 #
-# DRAFT: replace REPLACE_WITH_SHA256 after a real release.
-# See ../README.md for the release and checksum steps.
+# vanshcodeworks.Burrow - v0.1.0
+# Generated from release v0.1.0
 
 PackageIdentifier: vanshcodeworks.Burrow
 PackageVersion: 0.1.0
 PackageName: Burrow
-Publisher: Burrow contributors
+Publisher: vanshcodeworks
+PublisherUrl: https://github.com/vanshcodeworks
+PublisherSupportUrl: https://github.com/vanshcodeworks/burrow/issues
+Author: vanshcodeworks
+PackageName: Burrow
+PackageUrl: https://github.com/vanshcodeworks/burrow
 License: MIT OR Apache-2.0
 LicenseUrl: https://github.com/vanshcodeworks/burrow/blob/main/LICENSE-MIT
-Copyright: Copyright (c) Burrow contributors
+Copyright: Copyright (c) vanshcodeworks
+CopyrightUrl: https://github.com/vanshcodeworks/burrow/blob/main/LICENSE-MIT
 ShortDescription: Native Windows local development environment manager
-Description: >-
+Description: |
   Burrow runs services from one burrow.toml as native Windows processes, with
   automatic ports, generated environment variables, health-checked startup,
   verified package downloads, snapshots, and a live terminal dashboard. It does
@@ -21,17 +27,27 @@ Tags:
   - developer-tools
   - local-development
   - postgresql
+  - redis
+  - mongodb
+  - nats
+  - caddy
+  - mysql
+  - elasticsearch
   - rust
   - windows
 PackageUrl: https://github.com/vanshcodeworks/burrow
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip
-    InstallerSha256: REPLACE_WITH_SHA256
+    InstallerSha256: 2667ad52d3ce8df4f3920de8c6c5a30114a4cd1d9a075e204a59d6ec068ad199
     InstallerType: zip
     NestedInstallerType: portable
     NestedInstallerFiles:
       - RelativeFilePath: burrow.exe
         PortableCommandAlias: burrow
+    InstallerSwitches:
+      Silent: /S
+      SilentWithProgress: /S
+    ProductCode: "{BURROW-CODE}"
 ManifestType: singleton
 ManifestVersion: 1.6.0

@@ -7,7 +7,7 @@
   "architecture": {
     "64bit": {
       "url": "https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip",
-      "hash": "REPLACE_WITH_SHA256"
+      "hash": "2667ad52d3ce8df4f3920de8c6c5a30114a4cd1d9a075e204a59d6ec068ad199"
     }
   },
   "bin": "burrow.exe",

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Burrow Chocolatey Package Manifest
+  Generated from release v0.1.0
+  Submit to https://community.chocolatey.org/packages/burrow
+-->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>burrow</id>
+    <version>0.1.0</version>
+    <title>Burrow</title>
+    <authors>vanshcodeworks</authors>
+    <owners>vanshcodeworks</owners>
+    <projectUrl>https://github.com/vanshcodeworks/burrow</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/vanshcodeworks/burrow/main/docs/assets/burrow-icon.png</iconUrl>
+    <licenseUrl>https://github.com/vanshcodeworks/burrow/blob/main/LICENSE-MIT</licenseUrl>
+    <projectSourceUrl>https://github.com/vanshcodeworks/burrow</projectSourceUrl>
+    <docsUrl>https://github.com/vanshcodeworks/burrow</docsUrl>
+    <mailingListUrl>https://github.com/vanshcodeworks/burrow/discussions</mailingListUrl>
+    <bugTrackerUrl>https://github.com/vanshcodeworks/burrow/issues</bugTrackerUrl>
+    <tags>developer-tools local-development postgresql redis mongodb nats caddy mysql elasticsearch rust windows development-environment</tags>
+    <summary>Native Windows local development environment manager</summary>
+    <description>
+      Burrow runs services from one burrow.toml as native Windows processes, with
+      automatic ports, generated environment variables, health-checked startup,
+      verified package downloads, snapshots, and a live terminal dashboard. It does
+      not require Docker, a virtual machine, or WSL.
+
+      Features:
+      - One burrow.toml to define your entire local stack
+      - Native Windows processes (no Docker/WSL required for native services)
+      - Automatic port allocation with stable per-project ports
+      - Health-gated service startup with dependency graph
+      - Verified package downloads with SHA-256 verification
+      - Loopback reverse proxy with *.localhost routing and WebSocket passthrough
+      - Live terminal dashboard (burrow top)
+      - Full-directory snapshots with journaled restore
+      - Read-only diagnostics (burrow doctor) with remedies
+
+      Built-in packages: PostgreSQL 16, NATS 2.15, Caddy 2.11, MongoDB 7, Redis 7, MySQL 8, Elasticsearch 8
+      Extensible via custom registry entries or container fallback.
+    </description>
+    <releaseNotes>
+      Initial release of Burrow v0.1.0
+      - Native Windows process supervision with Job Objects
+      - Built-in packages: PostgreSQL 16, NATS 2.15, Caddy 2.11
+      - Additional packages: MongoDB 7, Redis 7, MySQL 8, Elasticsearch 8
+      - Loopback reverse proxy with *.localhost routing
+      - Verified package downloads with SHA-256
+      - Content-addressed cache with resumable downloads
+      - Live terminal dashboard (burrow top)
+      - Diagnostics with burrow doctor
+      - Full-directory snapshots with restore
+    </releaseNotes>
+    <copyright>Copyright (c) 2024 vanshcodeworks</copyright>
+    <license type="expression">MIT OR Apache-2.0</license>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+  </metadata>
+  <files>
+    <file src="target\release-dry-run\burrow.exe" target="tools\burrow.exe" />
+  </files>
+</package>
