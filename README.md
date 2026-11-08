@@ -8,6 +8,26 @@
 
 ---
 
+## Quick Install
+
+```powershell
+# winget (Windows Package Manager)
+winget install vanshcodeworks.Burrow
+
+# Scoop
+scoop install burrow
+
+# Chocolatey (pending review)
+choco install burrow
+
+# Cargo (from source)
+cargo install --path crates\burrow-cli --locked
+
+# Manual: download burrow-v0.1.0-windows-x86_64.zip from GitHub Releases
+```
+
+---
+
 ## What Is This? (In Plain English)
 
 **Burrow is a tool that starts your whole local dev stack with one command.**
@@ -47,14 +67,30 @@ Everything stops cleanly. Your data stays in `.burrow/data/` — you can snapsho
 - Node.js, Python, Go, Rust, etc. already on your PATH (Burrow doesn't install languages).
 - To build from source: Rust 1.85+ and Visual Studio Build Tools.
 
-**Try it in 3 commands:**
+**Quick install (pick one):**
+
+```powershell
+# winget (Windows Package Manager)
+winget install vanshcodeworks.Burrow
+
+# Scoop
+scoop install burrow
+
+# Chocolatey (pending review)
+choco install burrow
+
+# Cargo (from source)
+cargo install --path crates\burrow-cli --locked
+```
+
+**Try the example project:**
 
 ```powershell
 # 1. Get the code
 git clone https://github.com/vanshcodeworks/burrow.git
 cd burrow
 
-# 2. Install Burrow (builds from source)
+# 2. Install Burrow (any method above, or build from source)
 cargo install --path crates\burrow-cli --locked
 
 # 3. Run the example project
@@ -149,6 +185,60 @@ See [Getting Started](docs/getting-started.md) for the full walkthrough, includi
 
 ---
 
+## What Can Burrow Run?
+
+### Native Windows Services (built-in or custom registry)
+
+| Category | Examples |
+|----------|----------|
+| **Databases** | PostgreSQL, MySQL, MongoDB, Redis, Elasticsearch, SQLite |
+| **Message Queues** | NATS, Redis (pub/sub), RabbitMQ (if Windows build exists) |
+| **Web Servers** | Caddy, nginx, Apache (if Windows builds exist) |
+| **App Runtimes** | Node.js, Python, Go, Rust, .NET, Java, PHP, Ruby, Bun, Deno |
+| **Custom** | Any Windows executable with CLI args |
+
+### Via Container Fallback (`use = "container:IMAGE"`)
+
+Any Docker image (PostgreSQL, MongoDB, Redis, Kafka, Kafka Connect, etc.). Requires Docker Desktop or Podman. Ephemeral filesystem (snapshots don't cover container internals).
+
+### Example Full Stack
+
+```toml
+[project]
+name = "myapp"
+
+[packages]
+postgres = { version = "16", source = "builtin" }
+redis = { version = "7", source = "builtin" }
+mongodb = { version = "7", source = "builtin" }
+
+[services.db]
+use = "postgres@16"
+memory = "512MB"
+seed = "db/init.sql"
+
+[services.cache]
+use = "redis@7"
+memory = "128MB"
+
+[services.search]
+use = "mongodb@7"
+memory = "256MB"
+
+[services.api]
+run = "node server.js"
+needs = ["db", "cache"]
+env = { DATABASE_URL = "{{db.url}}", REDIS_URL = "{{cache.url}}" }
+health = { http = "/health", timeout = "60s" }
+route = "api.localhost"
+
+[services.worker]
+run = "go run ./cmd/worker"
+needs = ["db", "search"]
+```
+
+---
+
 ## What Is Burrow
 
 Burrow is a **Windows-native process manager for local development stacks**. It reads one `burrow.toml`, validates it strictly, and starts each service as a native Windows child process inside a Windows Job Object.
@@ -161,9 +251,9 @@ Burrow is a **Windows-native process manager for local development stacks**. It 
 | Stable ports, health checks, logs, snapshots | Sandboxing or isolating untrusted code |
 | Solo developers and small teams | A GUI, cloud control plane, telemetry, or auto-updater |
 
-**Status:** pre-1.0. The core is implemented and tested; launch hardening is ongoing. Windows 11 x64 is the verified platform. Windows 10, ARM64, true standard-user accounts, OneDrive/UNC paths, FAT/exFAT volumes, corporate antivirus, `LongPathsEnabled=0`, and 8.3-disabled volumes are unverified. See the [compatibility matrix](docs/compatibility.md).
+**Status:** v0.1.0 released. Windows 11 x64 is the verified platform. Windows 10, ARM64, true standard-user accounts, OneDrive/UNC paths, FAT/exFAT volumes, corporate antivirus, `LongPathsEnabled=0`, and 8.3-disabled volumes are unverified. See the [compatibility matrix](docs/compatibility.md).
 
-There is no published release or signed installer yet. The supported install path is `cargo install --path crates\burrow-cli --locked` from a source checkout; winget and Scoop manifests are drafts with explicit placeholders.
+**Installers:** winget (`winget install vanshcodeworks.Burrow`), Scoop (`scoop install burrow`), Chocolatey (draft, pending review), MSI (source ready). The supported install path is `cargo install --path crates\burrow-cli --locked` from a source checkout; winget and Scoop are published with real SHA256 hashes.
 
 ---
 
@@ -176,7 +266,7 @@ Developers on Windows who want to run a PostgreSQL database, a Node.js API, and 
 - **Process Compose / Overmind** — cross-platform process orchestration, but no Windows package registry, no loopback proxy, no generated environments/secrets, no snapshots.
 
 Burrow exists to give Windows developers a **single, native tool** that:
-- Downloads and verifies pinned native packages (PostgreSQL, NATS, Caddy) with SHA-256
+- Downloads and verifies pinned native packages (PostgreSQL, MongoDB, Redis, NATS, Caddy, MySQL, Elasticsearch) with SHA-256
 - Allocates stable per-project ports (40000–49999) that survive restarts
 - Health-gates service startup via dependency graph
 - Generates environments and per-service secrets automatically
@@ -272,6 +362,10 @@ flowchart LR
         PKG1["postgres@16.15\nSHA-256 verified"]
         PKG2["nats@2.15.1"]
         PKG3["caddy@2.11.7"]
+        PKG4["mongodb@7.0.14"]
+        PKG5["redis@7.2.4"]
+        PKG6["mysql@8.0.39"]
+        PKG7["elasticsearch@8.15.0"]
     end
 
     subgraph PROXY["Loopback Proxy\n127.0.0.1:80 (preferred)"]
@@ -402,6 +496,10 @@ flowchart LR
 | `postgres` | 16.15 | PostgreSQL 16.15, `initdb -A trust --no-locale`, `listen_addresses=127.0.0.1` |
 | `nats` | 2.15.1 | NATS server 2.15.1 |
 | `caddy` | 2.11.7 | Caddy 2.11.7 |
+| `mongodb` | 7.0.14 | MongoDB 7.0.14 |
+| `redis` | 7.2.4 | Redis 7.2.4 (Memurai) |
+| `mysql` | 8.0.39 | MySQL 8.0.39 |
+| `elasticsearch` | 8.15.0 | Elasticsearch 8.15.0 |
 
 Each entry pins: HTTPS URL, exact byte size, SHA-256, archive type, binary layout, run/stop commands, connection URL, initialization steps.
 

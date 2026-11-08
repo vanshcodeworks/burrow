@@ -13,7 +13,6 @@
     <owners>vanshcodeworks</owners>
     <projectUrl>https://github.com/vanshcodeworks/burrow</projectUrl>
     <iconUrl>https://raw.githubusercontent.com/vanshcodeworks/burrow/main/docs/assets/burrow-icon.png</iconUrl>
-    <licenseUrl>https://github.com/vanshcodeworks/burrow/blob/main/LICENSE-MIT</licenseUrl>
     <projectSourceUrl>https://github.com/vanshcodeworks/burrow</projectSourceUrl>
     <docsUrl>https://github.com/vanshcodeworks/burrow</docsUrl>
     <mailingListUrl>https://github.com/vanshcodeworks/burrow/discussions</mailingListUrl>
@@ -53,10 +52,10 @@
       - Full-directory snapshots with restore
     </releaseNotes>
     <copyright>Copyright (c) 2024 vanshcodeworks</copyright>
-    <license type="expression">MIT OR Apache-2.0</license>
+    <licenseUrl>https://github.com/vanshcodeworks/burrow/blob/main/LICENSE-MIT</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
   </metadata>
   <files>
-    <file src="target\release-dry-run\burrow.exe" target="tools\burrow.exe" />
+    <file src="tools\burrow.exe" target="tools\burrow.exe" />
   </files>
 </package>
