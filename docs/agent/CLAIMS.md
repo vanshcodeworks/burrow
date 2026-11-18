@@ -136,7 +136,7 @@ manually this run, not automated), **gap** (no backing — queued in QUEUE.md).
 
 | Claim | Evidence | Status |
 | --- | --- | --- |
-| Launch copy uses only measured or documented product claims | `docs/launch/announcement.md` cites 1.84-1.88 s, 1.92-3.20 s, 4.11 s vs 10.7 s, and 10.9-11.0 MB vs 37.2-62.1 MB, with the benchmark caveats; the repository URL is filled in; no release URL, version, or hash is claimed | verified by review |
+| Launch copy uses only measured or documented product claims | `docs/launch/announcement.md` cites 1.84-1.88 s, 1.92-3.20 s, 4.11 s vs 10.7 s, and 10.9-11.0 MB vs 37.2-62.1 MB, with the benchmark caveats; the repository URL and the real v0.1.0 release/version are referenced, package-manager channels are marked drafts, binaries unsigned; no hash is claimed | verified by review |
 | Launch copy does not claim unverified platform or release support | Short and long drafts say Windows 11 x86-64 is verified and Windows 10/ARM64/clean-machine/signed artifacts are not; Show HN says Windows 11 today (Windows 10 unverified); the checklist makes the clean-machine pass and CI probe a gate | verified by review |
 | Screenshots are planned but not committed | `docs/launch/screenshots.md` says no screenshots are committed; capture is a human action with a shot list, 120x30 terminal requirement, and a secret/personal-data check | verified (no images present) |
 | The demo uses the current measured numbers and current `doctor` output | `docs/demo.md` shows 11 ok including `listeners`, the `RUNTIME` column, 1.84-1.88 s, and 10.9-11.0 MB; the status and doctor blocks came from a live release-binary run | verified (one live run; PIDs, ports, and log text are representative) |
