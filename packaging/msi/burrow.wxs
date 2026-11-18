@@ -10,7 +10,7 @@
   <Product Id="*"
            Name="Burrow"
            Language="1033"
-           Version="0.1.0"
+           Version="0.2.0"
            Manufacturer="vanshcodeworks"
            UpgradeCode="198DD3A0-025A-40AC-BF30-08F7CFCDD5AF">
 

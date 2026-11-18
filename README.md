@@ -37,7 +37,7 @@ burrow --version
 
 winget, Scoop, Chocolatey and MSI manifests in [`packaging/`](packaging/README.md)
 are drafts pending store submission/review. The prebuilt zip and its checksums
-are on the [v0.1.0 GitHub Release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0).
+are on the [v0.2.0 GitHub Release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.2.0).
 
 ---
 
@@ -225,9 +225,9 @@ Burrow is a **Windows-native process manager for local development stacks**. It 
 | Stable ports, health checks, logs, snapshots | Sandboxing or isolating untrusted code |
 | Solo developers and small teams | A GUI, cloud control plane, telemetry, or auto-updater |
 
-**Status:** v0.1.0 released. Windows 11 x64 is the verified platform. Windows 10, ARM64, true standard-user accounts, OneDrive/UNC paths, FAT/exFAT volumes, corporate antivirus, `LongPathsEnabled=0`, and 8.3-disabled volumes are unverified. See the [compatibility matrix](docs/compatibility.md).
+**Status:** v0.2.0 released. Windows 11 x64 is the verified platform. Windows 10, ARM64, true standard-user accounts, OneDrive/UNC paths, FAT/exFAT volumes, corporate antivirus, `LongPathsEnabled=0`, and 8.3-disabled volumes are unverified. See the [compatibility matrix](docs/compatibility.md).
 
-**Installers:** the supported path is `cargo install --path crates\burrow-cli --locked` from a source checkout, or the verified zip on the [v0.1.0 GitHub Release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0). The winget, Scoop, Chocolatey, and MSI manifests in [`packaging/`](packaging/README.md) are drafts waiting on store submission/review — those one-line install commands will work once published.
+**Installers:** the supported path is `cargo install --path crates\burrow-cli --locked` from a source checkout, or the verified zip on the [v0.2.0 GitHub Release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.2.0). The winget, Scoop, Chocolatey, and MSI manifests in [`packaging/`](packaging/README.md) are drafts waiting on store submission/review — those one-line install commands will work once published.
 
 ---
 
@@ -910,7 +910,7 @@ See [Security and trust](docs/security.md) for the full model. Report vulnerabil
 - **File watching is opt-in per service** (`watch` array). Only watches listed directories. Not a whole-project watcher. Framework watchers (Vite, `uvicorn --reload`, `cargo watch`) still work inside a service.
 - **`*.localhost` resolution depends on the machine.** Use direct loopback URL or add hosts entry; proxy works either way.
 - **No GUI, cloud integration, telemetry, or auto-updater.** Optional container fallback requires Docker/Podman; container filesystems are ephemeral (snapshots don't cover them).
-- **Unsigned binaries.** The v0.1.0 release zip is real, but there is no signing certificate; SmartScreen may warn on first run. Winget/Scoop/Chocolatey/MSI are drafts, not working installers.
+- **Unsigned binaries.** The v0.2.0 release zip is real, but there is no signing certificate; SmartScreen may warn on first run. Winget/Scoop/Chocolatey/MSI are drafts, not working installers.
 
 ---
 

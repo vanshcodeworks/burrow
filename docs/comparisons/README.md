@@ -31,7 +31,7 @@ ephemeral and is not a Compose replacement. See [`README.md`](../../README.md),
 
 The supported install paths are `cargo install --path crates\burrow-cli --locked`
 from a checkout and the verified zip on the
-[v0.1.0 GitHub Release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0).
+[v0.2.0 GitHub Release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.2.0).
 Package-manager manifests are drafts awaiting publication; the binaries are
 unsigned.
 

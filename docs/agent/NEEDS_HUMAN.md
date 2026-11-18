@@ -2,7 +2,7 @@
 
 - **Publishing, signing, and package-manager submission** (GitHub release,
   winget, Scoop, Chocolatey, MSI, signing certificates) remain human actions per
-  the hard rules. The `v0.1.0` tag and GitHub Release exist, but there is no
+  the hard rules. The `v0.2.0` tag and GitHub Release exist, but there is no
   signature and no package-manager submission. Nothing here signs, uploads a
   release, or posts.
 - **Public-repository review**: confirm the README, animated SVG assets, security

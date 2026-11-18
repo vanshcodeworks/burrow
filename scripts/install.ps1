@@ -19,11 +19,11 @@
     .\install.ps1
 
 .EXAMPLE
-    .\scripts\install.ps1 -Version 0.1.0 -NoPath -InstallDir C:\tools\burrow
+    .\scripts\install.ps1 -Version 0.2.0 -NoPath -InstallDir C:\tools\burrow
 #>
 [CmdletBinding()]
 param(
-    [string]$Version = '0.1.0',
+    [string]$Version = '0.2.0',
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'vanshcodeworks\Burrow\bin'),
     [switch]$NoPath
 )

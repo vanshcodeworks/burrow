@@ -56,7 +56,7 @@
       and reports image pull/build separately. Podman remains unavailable and is
       documented as unverified.
 - [ ] **Packaging, trust, and docs site**: the manifests are repaired drafts and
-      `packaging/README.md` states the truthful status. After the v0.1.0 GitHub
+      `packaging/README.md` states the truthful status. After the v0.2.0 GitHub
       Release is created, copy the published asset's SHA-256 into winget, Scoop
       and Chocolatey, then a human opens the store PRs / pushes Chocolatey with
       their API key. MSI still needs a WiX build; code signing needs an EV

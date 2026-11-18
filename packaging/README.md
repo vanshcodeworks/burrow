@@ -8,13 +8,13 @@ build the MSI, see [`STORE_SUBMISSION.md`](STORE_SUBMISSION.md).
 
 ## Current status
 
-**Version:** v0.1.0. The source code and GitHub Release are real; the store
+**Version:** v0.2.0. The source code and GitHub Release are real; the store
 manifests below are drafts awaiting submission/review.
 
 | Channel | Status | How to install |
 |---------|--------|----------------|
 | Source checkout | ✅ Supported | `cargo install --path crates\burrow-cli --locked` |
-| GitHub Release zip | ✅ Supported | Download `burrow-v0.1.0-windows-x86_64.zip` from the [v0.1.0 release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0) and verify its SHA-256 |
+| GitHub Release zip | ✅ Supported | Download `burrow-v0.2.0-windows-x86_64.zip` from the [v0.2.0 release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.2.0) and verify its SHA-256 |
 | winget | 📝 Draft | `winget install vanshcodeworks.Burrow` — **not published yet** (pending PR to `microsoft/winget-pkgs`) |
 | Scoop | 📝 Draft | `scoop install burrow` — **not published yet** (pending PR to a Scoop bucket) |
 | Chocolatey | 📝 Draft | `choco install burrow` — **not published yet** (pending review; requires the maintainer's API key) |
@@ -27,11 +27,11 @@ after the manifest is accepted upstream and an actual install succeeds.
 
 | File | SHA-256 |
 |------|---------|
-| `burrow-v0.1.0-windows-x86_64.zip` | `466813f2cef009a9000b0b4641872621cb2cc680851a6b20c7809575edaef480` |
-| `burrow-v0.1.0-windows-x86_64.cdx.json` (CycloneDX SBOM) | `75d139f1e0833fbed89b26dd989dfcda30b2e8dd5583685ece3d36cb62159432` |
+| `burrow-v0.2.0-windows-x86_64.zip` | `466813f2cef009a9000b0b4641872621cb2cc680851a6b20c7809575edaef480` |
+| `burrow-v0.2.0-windows-x86_64.cdx.json` (CycloneDX SBOM) | `75d139f1e0833fbed89b26dd989dfcda30b2e8dd5583685ece3d36cb62159432` |
 
 Source of truth: `SHA256SUMS.txt` on the
-[v0.1.0 release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0).
+[v0.2.0 release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.2.0).
 Both hashes were independently re-verified by downloading the published assets
 and hashing them locally. The checksums in the manifests below are copied from
 those published assets. If the release is rebuilt, every manifest checksum must
@@ -40,7 +40,7 @@ be regenerated from the new asset — never from a local dry run.
 ## Releasing
 
 1. Make sure the full local gate is green: `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --locked --all`, `cargo audit`, `cargo deny check`.
-2. Tag the commit: `git tag v0.1.0 && git push origin v0.1.0`.
+2. Tag the commit: `git tag v0.2.0 && git push origin v0.2.0`.
 3. The `.github/workflows/release.yml` workflow builds the zip, SBOM and
    `SHA256SUMS.txt`, optionally signs the executable, and creates the GitHub
    Release. Watch it to completion and confirm the assets exist.
@@ -72,7 +72,7 @@ Build and (with the maintainer's API key) push:
 ```powershell
 Copy-Item target\release\burrow.exe packaging\chocolatey\tools\burrow.exe -Force
 choco pack packaging\chocolatey\burrow.nuspec
-choco push .\burrow.0.1.0.nupkg --source https://push.chocolatey.org/ --api-key YOUR_KEY
+choco push .\burrow.0.2.0.nupkg --source https://push.chocolatey.org/ --api-key YOUR_KEY
 ```
 
 Before submitting, add a real `docs/assets/burrow-icon.png` and point `iconUrl`
@@ -112,7 +112,7 @@ Get-Content SHA256SUMS.txt | ForEach-Object {
 }
 
 .\burrow.exe --version
-# burrow 0.1.0
+# burrow 0.2.0
 ```
 
 ## What is not provided

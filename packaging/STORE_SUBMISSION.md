@@ -5,31 +5,31 @@ A human must open the upstream pull requests and push the Chocolatey package.
 
 ## Before submitting anything
 
-- [ ] The v0.1.0 GitHub Release still exists and has the same zip and SHA-256
+- [ ] The v0.2.0 GitHub Release still exists and has the same zip and SHA-256
 - [ ] The hashes in the manifests match `SHA256SUMS.txt` on that release
-- [ ] `burrow --version` from the published zip prints `burrow 0.1.0`
+- [ ] `burrow --version` from the published zip prints `burrow 0.2.0`
 
 Published hash (verified by downloading the asset):
 
 ```
-466813f2cef009a9000b0b4641872621cb2cc680851a6b20c7809575edaef480  burrow-v0.1.0-windows-x86_64.zip
+466813f2cef009a9000b0b4641872621cb2cc680851a6b20c7809575edaef480  burrow-v0.2.0-windows-x86_64.zip
 ```
 
 ## winget (microsoft/winget-pkgs)
 
 The required three-file layout is already staged at
-[`winget/manifests/v/vanshcodeworks/Burrow/0.1.0/`](winget/manifests/v/vanshcodeworks/Burrow/0.1.0/).
+[`winget/manifests/v/vanshcodeworks/Burrow/0.2.0/`](winget/manifests/v/vanshcodeworks/Burrow/0.2.0/).
 
 1. Fork `microsoft/winget-pkgs` and clone your fork.
 2. Copy the three files into
-   `manifests/v/vanshcodeworks/Burrow/0.1.0/` in your fork.
+   `manifests/v/vanshcodeworks/Burrow/0.2.0/` in your fork.
 3. Validate locally with `wingetcreate validate` if available:
    ```powershell
-   wingetcreate validate .\manifests\v\vanshcodeworks\Burrow\0.1.0
+   wingetcreate validate .\manifests\v\vanshcodeworks\Burrow\0.2.0
    ```
    If `wingetcreate` is not installed, rely on the CI validation in the PR and
    watch the check results.
-4. Open a PR. The title should be `vanshcodeworks.Burrow 0.1.0`.
+4. Open a PR. The title should be `vanshcodeworks.Burrow 0.2.0`.
 5. Do not claim `winget install` works until the PR is merged and an actual
    install succeeds on a machine with a clean winget index.
 
@@ -64,12 +64,12 @@ The bucket entry is [`scoop/burrow.json`](scoop/burrow.json).
    GitHub URL; the community feed requires a valid icon.
 3. Test locally:
    ```powershell
-   choco install .\burrow.0.1.0.nupkg --source . -y
+   choco install .\burrow.0.2.0.nupkg --source . -y
    choco uninstall burrow -y
    ```
 4. Push with your own API key:
    ```powershell
-   choco push .\burrow.0.1.0.nupkg --source https://push.chocolatey.org/ --api-key YOUR_KEY
+   choco push .\burrow.0.2.0.nupkg --source https://push.chocolatey.org/ --api-key YOUR_KEY
    ```
 
 ## MSI

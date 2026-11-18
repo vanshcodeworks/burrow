@@ -1,12 +1,12 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.6.0.schema.json
 #
-# vanshcodeworks.Burrow - v0.1.0
+# vanshcodeworks.Burrow - v0.2.0
 # Draft manifest: pending submission to microsoft/winget-pkgs.
-# InstallerSha256 is from the published v0.1.0 GitHub Release asset and was
+# InstallerSha256 is from the published v0.2.0 GitHub Release asset and was
 # verified by downloading the asset and hashing it locally.
 
 PackageIdentifier: vanshcodeworks.Burrow
-PackageVersion: 0.1.0
+PackageVersion: 0.2.0
 PackageName: Burrow
 Publisher: vanshcodeworks
 PublisherUrl: https://github.com/vanshcodeworks
@@ -36,7 +36,7 @@ Tags:
   - windows
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip
+    InstallerUrl: https://github.com/vanshcodeworks/burrow/releases/download/v0.2.0/burrow-v0.2.0-windows-x86_64.zip
     InstallerSha256: 466813f2cef009a9000b0b4641872621cb2cc680851a6b20c7809575edaef480
     InstallerType: zip
     NestedInstallerType: portable

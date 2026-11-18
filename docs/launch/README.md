@@ -1,7 +1,7 @@
 # Launch kit (drafts)
 
 **Status: drafts for a human to review and publish.** Nothing in this directory
-posts, tags, signs, uploads, or submits a package. The v0.1.0 GitHub Release and
+posts, tags, signs, uploads, or submits a package. The v0.2.0 GitHub Release and
 its verified zip exist, but the binaries are unsigned and the package-manager
 manifests are drafts. The guaranteed install path is still from a checkout.
 

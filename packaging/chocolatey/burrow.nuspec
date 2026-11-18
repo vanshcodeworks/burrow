@@ -6,7 +6,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>burrow</id>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <title>Burrow</title>
     <authors>vanshcodeworks</authors>
     <owners>vanshcodeworks</owners>
@@ -39,7 +39,7 @@
       Other services run from your PATH or through an optional container fallback.
     </description>
     <releaseNotes>
-      Initial release of Burrow v0.1.0
+      Initial release of Burrow v0.2.0
       - Native Windows process supervision with Job Objects
       - Built-in packages: PostgreSQL 16, NATS 2.15, Caddy 2.11
       - Loopback reverse proxy with *.localhost routing

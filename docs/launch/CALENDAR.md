@@ -7,7 +7,7 @@ every claim in the copy has been checked against [`docs/benchmarks.md`](../bench
 ## Before day 1
 
 - [ ] Full local gate green on the release commit: fmt, clippy, tests, audit, deny
-- [ ] GitHub Release `v0.1.0` exists with zip, SBOM and `SHA256SUMS.txt`
+- [ ] GitHub Release `v0.2.0` exists with zip, SBOM and `SHA256SUMS.txt`
 - [ ] One-line installer verified from a clean user profile
 - [ ] `burrow init --from docker-compose.yml` verified on a real compose file
 - [ ] 10-second demo clip recorded and watched once at full size

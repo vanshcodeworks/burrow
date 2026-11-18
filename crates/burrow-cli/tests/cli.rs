@@ -113,7 +113,7 @@ fn powershell_listener() -> &'static str {
 fn version_reports_package_version() {
     let output = burrow().arg("--version").output().expect("run burrow");
     assert!(output.status.success());
-    assert!(stdout(&output).contains("burrow 0.1.0"));
+    assert!(stdout(&output).contains(&format!("burrow {}", env!("CARGO_PKG_VERSION"))));
 }
 
 #[test]
@@ -1089,7 +1089,7 @@ fn doctor_report_writes_a_redacted_local_bundle() {
         serde_json::from_str(&stdout(&output)).expect("doctor --json prints JSON");
     let path = PathBuf::from(report["report_path"].as_str().expect("report_path"));
     assert!(path.is_file(), "missing {}", path.display());
-    assert_eq!(report["burrow_version"], "0.1.0");
+    assert_eq!(report["burrow_version"], env!("CARGO_PKG_VERSION"));
     assert!(report["generated_at"]
         .as_str()
         .is_some_and(|value| value.contains('T')));

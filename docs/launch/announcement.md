@@ -19,7 +19,7 @@ other services can run as commands or through an optional Docker/Podman
 fallback. There is no telemetry, and the code is MIT OR Apache-2.0.
 
 Windows 11 x86-64 is verified; Windows 10 and ARM64 are not yet verified. The
-v0.1.0 release and its verified zip are on GitHub; the binaries are unsigned and
+v0.2.0 release and its verified zip are on GitHub; the binaries are unsigned and
 the package-manager manifests are drafts. Try it from a checkout with
 `cargo install --path crates\burrow-cli --locked`, then run the
 `examples\node-postgres` stack. Details: [`README.md`](../../README.md).
@@ -89,7 +89,7 @@ alternative is the better fit.
 
 **Try it**
 
-The v0.1.0 release zip is available on GitHub; the binaries are unsigned and the
+The v0.2.0 release zip is available on GitHub; the binaries are unsigned and the
 package-manager manifests are drafts. From a checkout:
 
 ```powershell
