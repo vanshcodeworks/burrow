@@ -10,9 +10,9 @@ $ErrorActionPreference = 'Stop'
 
 $packageName = 'burrow'
 $url64 = 'https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip'
-$checksum64 = '2667ad52d3ce8df4f3920de8c6c5a30114a4cd1d9a075e204a59d6ec068ad199'
+$checksum64 = '466813f2cef009a9000b0b4641872621cb2cc680851a6b20c7809575edaef480'
 $checksumType64 = 'sha256'
-# Draft manifest: url64/checksum64 must match the published v0.1.0 GitHub Release asset.
+# Draft manifest: url64/checksum64 match the published v0.1.0 GitHub Release asset.
 
 # Download and extract
 $tempDir = Join-Path $env:TEMP "burrow-install-$([guid]::NewGuid())"

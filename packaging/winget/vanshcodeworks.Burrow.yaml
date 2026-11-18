@@ -2,7 +2,8 @@
 #
 # vanshcodeworks.Burrow - v0.1.0
 # Draft manifest: pending submission to microsoft/winget-pkgs.
-# InstallerSha256 must match the published v0.1.0 GitHub Release asset.
+# InstallerSha256 is from the published v0.1.0 GitHub Release asset and was
+# verified by downloading the asset and hashing it locally.
 
 PackageIdentifier: vanshcodeworks.Burrow
 PackageVersion: 0.1.0
@@ -36,7 +37,7 @@ Tags:
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip
-    InstallerSha256: 2667ad52d3ce8df4f3920de8c6c5a30114a4cd1d9a075e204a59d6ec068ad199
+    InstallerSha256: 466813f2cef009a9000b0b4641872621cb2cc680851a6b20c7809575edaef480
     InstallerType: zip
     NestedInstallerType: portable
     NestedInstallerFiles:

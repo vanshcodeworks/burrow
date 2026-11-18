@@ -1,10 +1,10 @@
 # Needs human (log and continue)
 
-- **Publishing, signing, and package-manager submission** (crates.io, GitHub
-  release, winget, Scoop, signing certificates) remain human actions per the
-  hard rules. The repository is public on `main`, but no release, tag, signature,
-  or package submission exists. Nothing here tags, signs, uploads a release, or
-  posts.
+- **Publishing, signing, and package-manager submission** (GitHub release,
+  winget, Scoop, Chocolatey, MSI, signing certificates) remain human actions per
+  the hard rules. The `v0.1.0` tag and GitHub Release exist, but there is no
+  signature and no package-manager submission. Nothing here signs, uploads a
+  release, or posts.
 - **Public-repository review**: confirm the README, animated SVG assets, security
   policy, code of conduct contact, and packaging drafts are acceptable for
   public view. The pre-publication history was rewritten to

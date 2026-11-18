@@ -869,7 +869,7 @@ See [Security and trust](docs/security.md) for the full model. Report vulnerabil
 - **File watching is opt-in per service** (`watch` array). Only watches listed directories. Not a whole-project watcher. Framework watchers (Vite, `uvicorn --reload`, `cargo watch`) still work inside a service.
 - **`*.localhost` resolution depends on the machine.** Use direct loopback URL or add hosts entry; proxy works either way.
 - **No GUI, cloud integration, telemetry, or auto-updater.** Optional container fallback requires Docker/Podman; container filesystems are ephemeral (snapshots don't cover them).
-- **No published release or signing certificate yet.** Winget/Scoop manifests are drafts with explicit placeholders, not working installers.
+- **Unsigned binaries.** The v0.1.0 release zip is real, but there is no signing certificate; SmartScreen may warn on first run. Winget/Scoop/Chocolatey/MSI are drafts, not working installers.
 
 ---
 
