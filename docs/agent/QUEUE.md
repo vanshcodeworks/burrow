@@ -24,12 +24,13 @@
       model, all claims verified. Completed in cycle 22.
 - [x] **Remote CI green**: run 42367275950 passes on `windows-latest` with
       check and audit jobs. Fixed container test Windows manifest check.
-- [ ] **`{{seed_file}}` template bug**: `env_for_a_package_service_does_not_download_the_package`
-      test fails because `{{seed_file}}` template is rendered instead of
-      postgres url_template. Root cause: seed command template leaks into
-      url_template during registry loading or template rendering. Investigation
-      needed in `crates/burrow-pkg/src/registry.rs` and
-      `crates/burrow-cli/src/project.rs`.
+- [x] **`{{seed_file}}` template bug — FIXED (cycle 23)**: the real cause was
+      `build_package_plan` in `crates/burrow-cli/src/project.rs` rendering the
+      seed step in the init loop before `seed_file` was inserted into `vars`.
+      The seed step is now identified first and skipped during init rendering;
+      a regression test with a configured seed file was added. Both
+      `env_for_a_package_service_does_not_download_the_package` and the new test
+      pass.
 - [ ] **Flaky health-check test**: `a_failed_health_check_stops_the_daemon_and_leaves_no_state`
       fails intermittently due to service log not being written in time.
 - [ ] **True clean-machine pass**: a VM, Windows Sandbox, or clean CI runner
@@ -54,11 +55,12 @@
       machine specs and raw data in `docs/benchmarks/2026-10-25-stacks.json`,
       and reports image pull/build separately. Podman remains unavailable and is
       documented as unverified.
-- [ ] **Packaging, trust, and docs site**: release dry-run zip/checksums/SBOM
-      (D6) and cargo-deny config (D1) are done; the signing plan is documented
-      in `packaging/README.md`; winget/Scoop manifests still need real hashes
-      after a human release, and the docs site (E2) is deferred. A human
-      publishes.
+- [ ] **Packaging, trust, and docs site**: the manifests are repaired drafts and
+      `packaging/README.md` states the truthful status. After the v0.1.0 GitHub
+      Release is created, copy the published asset's SHA-256 into winget, Scoop
+      and Chocolatey, then a human opens the store PRs / pushes Chocolatey with
+      their API key. MSI still needs a WiX build; code signing needs an EV
+      certificate. The docs site (E2) is deferred.
 - [x] **Launch kit drafts**: `docs/launch/README.md`, `announcement.md`,
       `checklist.md`, and `screenshots.md`, plus the updated `docs/demo.md`.
       Announcement copy uses only measured or documented claims and now points at

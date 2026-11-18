@@ -1,178 +1,124 @@
 # Packaging and Distribution
 
-Burrow is distributed as one executable, `burrow.exe`. There is no installer,
-service, or background update process.
+Burrow is distributed as a single executable, `burrow.exe`. There is no installer
+service, background updater, or machine-wide agent.
 
-## Current Status
+## Current status
 
-**Released:** v0.1.0 (tagged as `v0.1.0`)
+**Version:** v0.1.0. The source code and GitHub Release are real; the store
+manifests below are drafts awaiting submission/review.
 
-| Installer | Status | Link |
-|-----------|--------|------|
-| `cargo install` | ✅ Official | `cargo install --path crates\burrow-cli --locked` |
-| **GitHub Releases** | ✅ Official | [v0.1.0](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0) |
-| **winget** | ✅ Published | `winget install vanshcodeworks.Burrow` |
-| **Scoop** | ✅ Published | `scoop install burrow` |
-| **Chocolatey** | 📝 Ready to submit | `choco install burrow` (pending review) |
-| **MSI** | 📝 Source ready | `packaging/msi/burrow.wxs` (build with WiX) |
+| Channel | Status | How to install |
+|---------|--------|----------------|
+| Source checkout | ✅ Supported | `cargo install --path crates\burrow-cli --locked` |
+| GitHub Release zip | ✅ Supported | Download `burrow-v0.1.0-windows-x86_64.zip` from the [v0.1.0 release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0) and verify its SHA-256 |
+| winget | 📝 Draft | `winget install vanshcodeworks.Burrow` — **not published yet** (pending PR to `microsoft/winget-pkgs`) |
+| Scoop | 📝 Draft | `scoop install burrow` — **not published yet** (pending PR to a Scoop bucket) |
+| Chocolatey | 📝 Draft | `choco install burrow` — **not published yet** (pending review; requires the maintainer's API key) |
+| MSI (WiX) | 📝 Source only | `packaging/msi/burrow.wxs` — build locally with WiX Toolset v3; unsigned |
 
-## Release Artifacts (v0.1.0)
+Do not present a draft channel as published. A channel becomes "published" only
+after the manifest is accepted upstream and an actual install succeeds.
+
+## Release artifacts
 
 | File | SHA-256 |
 |------|---------|
-| `burrow-v0.1.0-windows-x86_64.zip` | `2667ad52d3ce8df4f3920de8c6c5a30114a4cd1d9a075e204a59d6ec068ad199` |
-| `burrow-v0.1.0-windows-x86_64.cdx.json` (SBOM) | `b56e937e0c3a08dd19c0d81843a84be06e4e3f7d33061e918cfbb62ee3609d59` |
+| `burrow-v0.1.0-windows-x86_64.zip` | see `SHA256SUMS.txt` on the [v0.1.0 release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0) |
+| `burrow-v0.1.0-windows-x86_64.cdx.json` (CycloneDX SBOM) | see `SHA256SUMS.txt` on the release |
 
-Full checksums: [`SHA256SUMS.txt`](https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/SHA256SUMS.txt)
+The checksums in the manifests below are copied from the release asset. If the
+release is rebuilt, every manifest checksum must be regenerated from the new
+asset — never from a local dry run.
 
-## Quick Install
+## Releasing
 
-```powershell
-# winget (Windows Package Manager)
-winget install vanshcodeworks.Burrow
+1. Make sure the full local gate is green: `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --locked --all`, `cargo audit`, `cargo deny check`.
+2. Tag the commit: `git tag v0.1.0 && git push origin v0.1.0`.
+3. The `.github/workflows/release.yml` workflow builds the zip, SBOM and
+   `SHA256SUMS.txt`, optionally signs the executable, and creates the GitHub
+   Release. Watch it to completion and confirm the assets exist.
+4. Copy the published asset's SHA-256 into the winget, Scoop and Chocolatey
+   manifests, then open the upstream PRs / submit the Chocolatey package.
+5. Build the MSI locally (see below).
 
-# Scoop
-scoop install burrow
+## Manifests
 
-# Chocolatey (after package approval)
-choco install burrow
+### winget
 
-# Cargo (from source)
-cargo install --path crates\burrow-cli --locked
-
-# Manual download
-# Download burrow-v0.1.0-windows-x86_64.zip from GitHub Releases
-```
-
-## Package Managers
-
-### winget (Windows Package Manager)
-```yaml
-# packaging/winget/vanshcodeworks.Burrow.yaml
-PackageIdentifier: vanshcodeworks.Burrow
-PackageVersion: 0.1.0
-InstallerType: zip
-NestedInstallerType: portable
-InstallerSha256: 2667ad52d3ce8df4f3920de8c6c5a30114a4cd1d9a075e204a59d6ec068ad199
-```
+`packaging/winget/vanshcodeworks.Burrow.yaml` — singleton manifest, schema 1.6.
+Portable zip with `burrow.exe` aliased to `burrow`. Pending PR to
+`microsoft/winget-pkgs`.
 
 ### Scoop
-```json
-// packaging/scoop/burrow.json
-{
-  "version": "0.1.0",
-  "architecture": {
-    "64bit": {
-      "url": "https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip",
-      "hash": "2667ad52d3ce8df4f3920de8c6c5a30114a4cd1d9a075e204a59d6ec068ad199"
-    }
-  },
-  "bin": "burrow.exe"
-}
-```
+
+`packaging/scoop/burrow.json` — 64bit zip with `bin: burrow.exe`, `checkver`
+and `autoupdate` pointing at GitHub. Pending PR to a Scoop bucket.
 
 ### Chocolatey
-```xml
-<!-- packaging/chocolatey/burrow.nuspec -->
-<package>
-  <metadata>
-    <id>burrow</id>
-    <version>0.1.0</version>
-    <title>Burrow</title>
-    <authors>vanshcodeworks</authors>
-    <owners>vanshcodeworks</owners>
-    <projectUrl>https://github.com/vanshcodeworks/burrow</projectUrl>
-    <tags>developer-tools local-development postgresql redis mongodb nats caddy</tags>
-  </metadata>
-  <files>
-    <file src="burrow.exe" target="tools\burrow.exe" />
-  </files>
-</package>
-```
-Install script: `packaging/chocolatey/tools/chocolateyinstall.ps1`
 
-### MSI Installer (WiX)
-```xml
-<!-- packaging/msi/burrow.wxs -->
-<!-- Build with: candle.exe burrow.wxs && light.exe burrow.wixobj -out burrow.msi -->
-```
-Build requirements: WiX Toolset v3.11+
-```powershell
-candle.exe burrow.wxs -dBuildDir="..\..\target\release\" -dProjectDir="."
-light.exe burrow.wixobj -out burrow.msi
-```
+- `packaging/chocolatey/burrow.nuspec` — package metadata
+- `packaging/chocolatey/tools/chocolateyinstall.ps1` — verifies SHA-256, extracts `burrow.exe` into `$env:ChocolateyInstall\bin`
+- `packaging/chocolatey/tools/burrow.exe` — local build input for `choco pack` (not committed)
 
-## Release Process
-
-1. **Tag a release:**
-   ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
-
-2. **GitHub Actions workflow** (`.github/workflows/release.yml`) automatically:
-   - Runs full test suite
-   - Builds `burrow.exe` in release mode
-   - Generates `burrow-v0.1.0-windows-x86_64.zip`
-   - Generates CycloneDX 1.5 SBOM (`burrow-v0.1.0-windows-x86_64.cdx.json`)
-   - Creates `SHA256SUMS.txt`
-   - Creates GitHub Release with assets
-   - Updates winget/Scoop manifests with real SHA256
-
-3. **Manual steps after release:**
-   - Submit Chocolatey package: `choco push burrow.0.1.0.nupkg`
-   - Build MSI: `candle.exe burrow.wxs && light.exe burrow.wixobj -out burrow.msi`
-   - Verify all installers work
-
-## Local Dry Run
+Build and (with the maintainer's API key) push:
 
 ```powershell
-# Build and stage locally (no upload)
-.\scripts\release-dry-run.ps1
-
-# Output: target/release-dry-run/
-#   burrow-v0.1.0-windows-x86_64.zip
-#   burrow-v0.1.0-windows-x86_64.cdx.json
-#   SHA256SUMS.txt
+Copy-Item target\release\burrow.exe packaging\chocolatey\tools\burrow.exe -Force
+choco pack packaging\chocolatey\burrow.nuspec
+choco push .\burrow.0.1.0.nupkg --source https://push.chocolatey.org/ --api-key YOUR_KEY
 ```
 
-## Signing (Optional)
+Before submitting, add a real `docs/assets/burrow-icon.png` and point `iconUrl`
+at its raw GitHub URL — the community feed requires a valid icon.
 
-Add these GitHub repository secrets to enable code signing:
+### MSI (WiX Toolset v3)
+
+```powershell
+candle.exe packaging\msi\burrow.wxs -dBuildDir="target\release\"
+light.exe burrow.wixobj -out burrow.msi -ext WixUIExtension
+```
+
+Installs per-user to `%LOCALAPPDATA%\vanshcodeworks\Burrow`, adds a Start Menu
+shortcut, and writes an ARP entry. Unsigned until a code-signing certificate is
+configured.
+
+## Signing
+
+Add these repository secrets to enable signing in the release workflow:
+
 | Secret | Description |
 |--------|-------------|
 | `WINDOWS_CERTIFICATE_BASE64` | Base64-encoded `.pfx` code-signing certificate |
 | `WINDOWS_CERTIFICATE_PASSWORD` | PFX password |
 
-The workflow uses `signtool` with DigiCert timestamp server.
+Without them the binaries and MSI are unsigned; SmartScreen may warn on first
+run. EV certificates and established publisher reputation require human action.
 
 ## Verification
 
 ```powershell
-# Verify downloaded zip
+# Verify the release asset
 Get-Content SHA256SUMS.txt | ForEach-Object {
     $expected, $name = $_ -split '\s+', 2
     $actual = (Get-FileHash ".\$name" -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actual -ne $expected) { throw "checksum mismatch: $name" }
 }
 
-# Verify binary
 .\burrow.exe --version
 # burrow 0.1.0
 ```
 
-## What Is Not Provided
+## What is not provided
 
-- ❌ No automatic updater (by design — user controls updates)
-- ❌ No machine-wide installation (per-user only)
-- ❌ No Windows service (Burrow is a CLI tool)
-- ❌ No crates.io publish (workspace `publish = false`)
-- ❌ No signed SBOM/provenance (unsigned CycloneDX JSON asset)
+- No automatic updater (the user controls updates)
+- No machine-wide install (per-user only)
+- No Windows service (Burrow is a CLI tool)
+- No crates.io publish (all workspace crates set `publish = false`)
+- No signed SBOM/provenance attestation (the CycloneDX JSON is unsigned)
+- No shell completion generation command yet
 
 ## Branding
 
-All installers use **vanshcodeworks** branding:
-- **Publisher**: vanshcodeworks
-- **Repository**: https://github.com/vanshcodeworks/burrow
-- **Icon**: `docs/assets/burrow-icon.ico` (to be added)
-- **License**: MIT OR Apache-2.0
+All manifests use **vanshcodeworks** as publisher/author/manufacturer and point
+to <https://github.com/vanshcodeworks/burrow>.

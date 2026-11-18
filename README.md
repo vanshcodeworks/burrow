@@ -10,21 +10,17 @@
 
 ## Quick Install
 
+Burrow is a single Windows executable. The supported install path today is building from source (about 4 minutes the first time) or downloading the verified zip from GitHub Releases.
+
 ```powershell
-# winget (Windows Package Manager)
-winget install vanshcodeworks.Burrow
-
-# Scoop
-scoop install burrow
-
-# Chocolatey (pending review)
-choco install burrow
-
-# Cargo (from source)
+# From a source checkout
+git clone https://github.com/vanshcodeworks/burrow.git
+cd burrow
 cargo install --path crates\burrow-cli --locked
-
-# Manual: download burrow-v0.1.0-windows-x86_64.zip from GitHub Releases
+burrow --version
 ```
+
+Other distribution channels are **not published yet**: the winget, Scoop, Chocolatey, and MSI manifests in [`packaging/`](packaging/README.md) are drafts pending store submission/review, so `winget install vanshcodeworks.Burrow` and `scoop install burrow` will not work until then. The prebuilt `burrow-v0.1.0-windows-x86_64.zip` (with SHA-256 checksums) is attached to the [v0.1.0 GitHub Release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0).
 
 ---
 
@@ -58,65 +54,6 @@ Everything stops cleanly. Your data stays in `.burrow/data/` — you can snapsho
 - Use `use = "container:IMAGE"` only for services that don't have a Windows build
 
 ---
-
-## Quick Start (Real-Life Steps)
-
-**Prerequisites:**
-- Windows 11 (verified). Windows 10 works but unverified.
-- A normal terminal — **not Administrator**. PostgreSQL refuses to initialize as admin.
-- Node.js, Python, Go, Rust, etc. already on your PATH (Burrow doesn't install languages).
-- To build from source: Rust 1.85+ and Visual Studio Build Tools.
-
-**Quick install (pick one):**
-
-```powershell
-# winget (Windows Package Manager)
-winget install vanshcodeworks.Burrow
-
-# Scoop
-scoop install burrow
-
-# Chocolatey (pending review)
-choco install burrow
-
-# Cargo (from source)
-cargo install --path crates\burrow-cli --locked
-```
-
-**Try the example project:**
-
-```powershell
-# 1. Get the code
-git clone https://github.com/vanshcodeworks/burrow.git
-cd burrow
-
-# 2. Install Burrow (any method above, or build from source)
-cargo install --path crates\burrow-cli --locked
-
-# 3. Run the example project
-cd examples\node-postgres
-npm install
-burrow up
-```
-
-**What happens:**
-1. First run: downloads PostgreSQL (~356 MB), initializes the database, seeds it, starts the API
-2. Later runs: **~1.87 seconds** — uses cached PostgreSQL and initialized database
-3. Open `http://api.localhost` in your browser — it just works
-4. Press `Ctrl+C` or run `burrow down` to stop
-
-**Python example (FastAPI + PostgreSQL):**
-```powershell
-cd examples\python-postgres
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-burrow up
-```
-
----
-
-## Quick Navigation
 
 ## Quick Navigation
 
@@ -187,19 +124,21 @@ See [Getting Started](docs/getting-started.md) for the full walkthrough, includi
 
 ## What Can Burrow Run?
 
-### Native Windows Services (built-in or custom registry)
+### Native Windows Services
 
-| Category | Examples |
-|----------|----------|
-| **Databases** | PostgreSQL, MySQL, MongoDB, Redis, Elasticsearch, SQLite |
-| **Message Queues** | NATS, Redis (pub/sub), RabbitMQ (if Windows build exists) |
-| **Web Servers** | Caddy, nginx, Apache (if Windows builds exist) |
-| **App Runtimes** | Node.js, Python, Go, Rust, .NET, Java, PHP, Ruby, Bun, Deno |
-| **Custom** | Any Windows executable with CLI args |
+Three services are built into `burrow.exe` with pinned, SHA-256-verified Windows binaries:
+
+| Package | Version | What it is |
+|---------|---------|------------|
+| `postgres` | 16.15 | PostgreSQL relational database |
+| `nats` | 2.15.1 | NATS messaging server |
+| `caddy` | 2.11.7 | Caddy web server / reverse proxy |
+
+Anything else that is already on your PATH — Node.js, Python, Go, Rust, .NET, Java, or any other Windows executable — runs through `run = "..."` with generated environment variables, health checks, and stable ports. Adding a *new* downloadable native package means adding a verified entry to `registry/` and rebuilding the binary (see [Registry Reference](docs/registry.md)).
 
 ### Via Container Fallback (`use = "container:IMAGE"`)
 
-Any Docker image (PostgreSQL, MongoDB, Redis, Kafka, Kafka Connect, etc.). Requires Docker Desktop or Podman. Ephemeral filesystem (snapshots don't cover container internals).
+Anything with a Docker image — Redis, MongoDB, MySQL, Elasticsearch, Kafka, and so on — can run through Docker Desktop or Podman. Containers get loopback-only port mapping and an ephemeral filesystem (snapshots do not cover container internals).
 
 ### Example Full Stack
 
@@ -207,34 +146,30 @@ Any Docker image (PostgreSQL, MongoDB, Redis, Kafka, Kafka Connect, etc.). Requi
 [project]
 name = "myapp"
 
-[packages]
-postgres = { version = "16", source = "builtin" }
-redis = { version = "7", source = "builtin" }
-mongodb = { version = "7", source = "builtin" }
-
 [services.db]
 use = "postgres@16"
 memory = "512MB"
 seed = "db/init.sql"
 
-[services.cache]
-use = "redis@7"
-memory = "128MB"
-
-[services.search]
-use = "mongodb@7"
-memory = "256MB"
+[services.queue]
+use = "nats@2"
+memory = "64MB"
 
 [services.api]
 run = "node server.js"
-needs = ["db", "cache"]
-env = { DATABASE_URL = "{{db.url}}", REDIS_URL = "{{cache.url}}" }
+needs = ["db", "queue"]
+env = { DATABASE_URL = "{{db.url}}", NATS_URL = "{{queue.url}}" }
 health = { http = "/health", timeout = "60s" }
 route = "api.localhost"
 
 [services.worker]
 run = "go run ./cmd/worker"
-needs = ["db", "search"]
+needs = ["db", "queue"]
+
+[services.web]
+use = "caddy@2"
+needs = ["api"]
+route = "web.localhost"
 ```
 
 ---
@@ -253,7 +188,7 @@ Burrow is a **Windows-native process manager for local development stacks**. It 
 
 **Status:** v0.1.0 released. Windows 11 x64 is the verified platform. Windows 10, ARM64, true standard-user accounts, OneDrive/UNC paths, FAT/exFAT volumes, corporate antivirus, `LongPathsEnabled=0`, and 8.3-disabled volumes are unverified. See the [compatibility matrix](docs/compatibility.md).
 
-**Installers:** winget (`winget install vanshcodeworks.Burrow`), Scoop (`scoop install burrow`), Chocolatey (draft, pending review), MSI (source ready). The supported install path is `cargo install --path crates\burrow-cli --locked` from a source checkout; winget and Scoop are published with real SHA256 hashes.
+**Installers:** the supported path is `cargo install --path crates\burrow-cli --locked` from a source checkout, or the verified zip on the [v0.1.0 GitHub Release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0). The winget, Scoop, Chocolatey, and MSI manifests in [`packaging/`](packaging/README.md) are drafts waiting on store submission/review — those one-line install commands will work once published.
 
 ---
 
@@ -266,7 +201,7 @@ Developers on Windows who want to run a PostgreSQL database, a Node.js API, and 
 - **Process Compose / Overmind** — cross-platform process orchestration, but no Windows package registry, no loopback proxy, no generated environments/secrets, no snapshots.
 
 Burrow exists to give Windows developers a **single, native tool** that:
-- Downloads and verifies pinned native packages (PostgreSQL, MongoDB, Redis, NATS, Caddy, MySQL, Elasticsearch) with SHA-256
+- Downloads and verifies pinned native packages (PostgreSQL, NATS, Caddy) with SHA-256
 - Allocates stable per-project ports (40000–49999) that survive restarts
 - Health-gates service startup via dependency graph
 - Generates environments and per-service secrets automatically
@@ -362,10 +297,6 @@ flowchart LR
         PKG1["postgres@16.15\nSHA-256 verified"]
         PKG2["nats@2.15.1"]
         PKG3["caddy@2.11.7"]
-        PKG4["mongodb@7.0.14"]
-        PKG5["redis@7.2.4"]
-        PKG6["mysql@8.0.39"]
-        PKG7["elasticsearch@8.15.0"]
     end
 
     subgraph PROXY["Loopback Proxy\n127.0.0.1:80 (preferred)"]
@@ -496,10 +427,8 @@ flowchart LR
 | `postgres` | 16.15 | PostgreSQL 16.15, `initdb -A trust --no-locale`, `listen_addresses=127.0.0.1` |
 | `nats` | 2.15.1 | NATS server 2.15.1 |
 | `caddy` | 2.11.7 | Caddy 2.11.7 |
-| `mongodb` | 7.0.14 | MongoDB 7.0.14 |
-| `redis` | 7.2.4 | Redis 7.2.4 (Memurai) |
-| `mysql` | 8.0.39 | MySQL 8.0.39 |
-| `elasticsearch` | 8.15.0 | Elasticsearch 8.15.0 |
+
+Only packages with a pinned URL, exact byte size, and verified SHA-256 are shipped. Services without a trustworthy Windows build are supported through the [container fallback](#via-container-fallback-use-containerimage).
 
 Each entry pins: HTTPS URL, exact byte size, SHA-256, archive type, binary layout, run/stop commands, connection URL, initialization steps.
 
@@ -951,6 +880,7 @@ See [Security and trust](docs/security.md) for the full model. Report vulnerabil
 | [Getting Started](docs/getting-started.md) | Full walkthrough from install to first stack |
 | [Compatibility](docs/compatibility.md) | Exact probe, evidence, and unverified rows |
 | [Comparison with Other Tools](docs/comparisons/README.md) | Sourced comparison: Docker, Podman, Process Compose, Overmind, Dev Containers, WinSW, NSSM |
+| [Migrating from Docker Compose](docs/migration-from-docker-compose.md) | Map `docker-compose.yml` to `burrow.toml`, service by service |
 | [CLI Reference](docs/cli.md) | Every command, flag, JSON shape, exit code |
 | [Configuration Reference](docs/config-reference.md) | Every field, default, validation rule |
 | [JSON Schema](docs/burrow.schema.json) | Machine-readable `burrow.toml` schema |

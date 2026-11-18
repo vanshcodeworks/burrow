@@ -12,7 +12,7 @@ $packageName = 'burrow'
 $url64 = 'https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip'
 $checksum64 = '2667ad52d3ce8df4f3920de8c6c5a30114a4cd1d9a075e204a59d6ec068ad199'
 $checksumType64 = 'sha256'
-$toolsDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+# Draft manifest: url64/checksum64 must match the published v0.1.0 GitHub Release asset.
 
 # Download and extract
 $tempDir = Join-Path $env:TEMP "burrow-install-$([guid]::NewGuid())"
@@ -51,18 +51,6 @@ try {
         burrow --version
     } else {
         Write-Warning "Burrow installed but not found in PATH. You may need to restart your shell."
-    }
-
-    # Install shell completions if available
-    try {
-        $completionsDir = Join-Path $env:ChocolateyInstall 'completions'
-        if (-not (Test-Path $completionsDir)) {
-            New-Item -ItemType Directory -Path $completionsDir | Out-Null
-        }
-        & burrow completions powershell | Out-File (Join-Path $completionsDir 'burrow.ps1') -Encoding UTF8
-        Write-Host "PowerShell completions installed to $completionsDir"
-    } catch {
-        Write-Warning "Could not install completions: $_"
     }
 
 } finally {

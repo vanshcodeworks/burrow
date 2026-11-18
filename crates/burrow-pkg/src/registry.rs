@@ -606,7 +606,7 @@ fn convert_version(name: &str, key: &str, raw: RawVersion) -> Result<PackageVers
         }
     }
     // Also validate env commands
-    for (_, command) in &raw.env {
+    for command in raw.env.values() {
         if let Some(platform) = platform {
             if !platform.binaries.contains_key(&command.program) {
                 return Err(fail(format!(

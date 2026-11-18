@@ -2,7 +2,11 @@
 
 ## Current focus
 
-Cycle 22 completes the major README redesign and CI fixes. The repository is public on `main` with passing CI for 27/29 tests. Two tests fail: one persistent `{{seed_file}}` template bug in the env command, and one flaky timing test. The product is still pre-1.0: no release, signed installer, winget/Scoop submission, or screenshots exist. The clean-machine/CI verification and unverified compatibility rows remain blocked. Do not write `docs/agent/LAUNCH_READINESS.md` until those and the human-only launch steps are resolved.
+Cycle 23 (post-audit truth pass). The `{{seed_file}}` bug is **fixed**: `build_package_plan` now identifies the seed step before the init loop and skips it there, with a regression test covering a configured seed file. Clippy `for_kv_map` and the dead `InstalledPackage.seed` field are removed. The four unverified packages (mongodb, redis, mysql, elasticsearch) are **removed** — their entries had the empty-string SHA-256 and could never install; the built-in registry is now postgres, nats, caddy only. README/docs/packaging now state one truth: source install and the GitHub Release zip are supported; winget/Scoop/Chocolatey/MSI are drafts; binaries are unsigned. A migration guide from Docker Compose was added.
+
+Next: run the full local gate, push, re-run the release workflow so the v0.1.0 GitHub Release actually exists, then copy the published asset's SHA-256 into every manifest. Human-only items remain: store submissions, Chocolatey API key, code signing, MSI build. The compatibility rows for Windows 10, ARM64, standard-user, OneDrive/UNC, FAT/exFAT, and antivirus are still unverified.
+
+The cycle 22 notes below are historical; they described the failures that have since been fixed.
 
 ## Last cycle summary (2026-11-08, cycle 22)
 

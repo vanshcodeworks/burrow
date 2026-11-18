@@ -10,7 +10,8 @@ use anyhow::{bail, Context, Result};
 use burrow_config::{Config, HealthKind, RestartPolicy, Service, StartupPlan, LOCAL_CONFIG_FILE};
 use burrow_net::PortAllocator;
 use burrow_pkg::{
-    Cache, DownloadProgress, InitWhen, LifecycleStep, PackageHealth, PackageRef, Registry, TemplateCommand,
+    Cache, DownloadProgress, InitWhen, LifecycleStep, PackageHealth, PackageRef, Registry,
+    TemplateCommand,
 };
 use burrow_supervisor::{HealthCheck, HealthOptions, ProcessSpec};
 use serde::{Deserialize, Serialize};
@@ -224,7 +225,6 @@ struct InstalledPackage {
     run: TemplateCommand,
     stop: Option<TemplateCommand>,
     steps: Vec<LifecycleStep>,
-    seed: Option<TemplateCommand>, // Kept for backward compat, extracted from steps
     health: Option<PackageHealth>,
     binaries: BTreeMap<String, String>,
 }
@@ -504,10 +504,6 @@ async fn install_packages(
                 run,
                 stop: resolved.version.stop.clone(),
                 steps: resolved.version.steps.clone(),
-                seed: resolved.version.env.get("SEED").map(|c| c.clone()) // backward compat
-                    .or_else(|| resolved.version.steps.iter()
-                        .find(|s| s.command.program == "seed")
-                        .map(|s| s.command.clone())),
                 health: resolved.version.health.clone(),
                 binaries: resolved.platform.binaries.clone(),
             },
@@ -837,49 +833,60 @@ fn build_package_plan(
     let data_dir = project.data_dir(service_name);
     let mut vars = package_vars(project, service_name, port, password, None);
 
-    // Run steps with when = DataEmpty as init
+    // Identify the seed step up front. It is a data-empty step whose command
+    // references {{seed_file}}, so it must not be rendered in the init loop
+    // below: at that point seed_file is not in `vars` yet and rendering fails
+    // with "unknown package template variable {{seed_file}}".
+    let seed_step = package.steps.iter().find(|step| {
+        matches!(step.when, InitWhen::DataEmpty)
+            && (step.command.program == "seed"
+                || step.command.program == "psql"
+                || step.command.program == "migrate")
+    });
+
+    // Run steps with when = DataEmpty as init. The seed step is prepared
+    // separately below, after seed_file has been inserted into `vars`.
     let mut init = Vec::new();
     for step in &package.steps {
-        if matches!(step.when, InitWhen::DataEmpty) {
-            init.push(prepare_command(
-                package,
-                &step.command,
-                &vars,
-                password,
-                require_binaries,
-            )?);
+        if !matches!(step.when, InitWhen::DataEmpty) {
+            continue;
         }
+        if seed_step.is_some_and(|seed| std::ptr::eq(seed, step)) {
+            continue;
+        }
+        init.push(prepare_command(
+            package,
+            &step.command,
+            &vars,
+            password,
+            require_binaries,
+        )?);
     }
 
-    // Find seed step (when = DataEmpty with program "seed" or similar)
-    let seed_step = package.steps.iter().find(|s| 
-        matches!(s.when, InitWhen::DataEmpty) && 
-        (s.command.program == "seed" || s.command.program == "psql" || s.command.program == "migrate")
-    );
-
-    let (seed, seed_file, seed_sha256) =
-        if let (Some(step), Some(relative)) = (seed_step, &service.seed) {
-            let path = project.dir.join(relative);
-            if !path.is_file() {
-                bail!(
-                    "service `{service_name}` has seed = \"{}\" but that file does not exist",
-                    relative.display()
-                );
-            }
-            vars.insert("seed_file", path.to_string_lossy().into_owned());
-            let hash = burrow_data::hash_file(&path)
-                .map_err(|error| anyhow::anyhow!("service `{service_name}`: {error}"))?;
-            let prepared = prepare_command(package, &step.command, &vars, password, require_binaries)?;
-            (Some(prepared), Some(path), Some(hash))
-        } else {
-            if service.seed.is_some() && seed_step.is_none() {
-                tracing::warn!(
-                    service = service_name,
-                    "package has no seed command; ignoring the configured seed script"
-                );
-            }
-            (None, None, None)
-        };
+    let (seed, seed_file, seed_sha256) = if let (Some(step), Some(relative)) =
+        (seed_step, &service.seed)
+    {
+        let path = project.dir.join(relative);
+        if !path.is_file() {
+            bail!(
+                "service `{service_name}` has seed = \"{}\" but that file does not exist",
+                relative.display()
+            );
+        }
+        vars.insert("seed_file", path.to_string_lossy().into_owned());
+        let hash = burrow_data::hash_file(&path)
+            .map_err(|error| anyhow::anyhow!("service `{service_name}`: {error}"))?;
+        let prepared = prepare_command(package, &step.command, &vars, password, require_binaries)?;
+        (Some(prepared), Some(path), Some(hash))
+    } else {
+        if service.seed.is_some() && seed_step.is_none() {
+            tracing::warn!(
+                service = service_name,
+                "package has no seed command; ignoring the configured seed script"
+            );
+        }
+        (None, None, None)
+    };
 
     let mut stop_vars = package_vars(project, service_name, port, password, None);
     stop_vars.insert("seed_file", String::new());

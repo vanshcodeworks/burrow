@@ -1,109 +1,84 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Burrow WiX Installer Manifest
-  Generated from release v0.1.0
-  Build with: candle.exe burrow.wxs && light.exe burrow.wixobj -out burrow.msi
-  Requires WiX Toolset v3.11+
+  Burrow MSI installer source (WiX Toolset v3, draft - not yet built).
+  Build:
+    candle.exe burrow.wxs -dBuildDir="..\..\target\release\"
+    light.exe burrow.wixobj -out burrow.msi -ext WixUIExtension
+  The BuildDir variable must contain burrow.exe produced by a release build.
 -->
-<?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="*" 
-           Name="Burrow" 
-           Language="1033" 
-           Version="0.1.0" 
-           Manufacturer="vanshcodeworks" 
-           UpgradeCode="a1b2c3d4-e5f6-7890-abcd-ef1234567890">
-    
-    <Package InstallerVersion="200" 
-             Compressed="yes" 
-             InstallScope="perUser" 
+  <Product Id="*"
+           Name="Burrow"
+           Language="1033"
+           Version="0.1.0"
+           Manufacturer="vanshcodeworks"
+           UpgradeCode="198DD3A0-025A-40AC-BF30-08F7CFCDD5AF">
+
+    <Package InstallerVersion="200"
+             Compressed="yes"
+             InstallScope="perUser"
+             InstallPrivileges="limited"
              Description="Native Windows local development environment manager"
-             Manufacturer="vanshcodeworks"
-             Comments="Burrow - Native Windows local development environment manager"
-             InstallPrivileges="limited" />
-    
-    <MajorUpgrade DowngradeErrorMessage="A newer version of Burrow is already installed." 
-                  AllowSameVersionUpgrades="yes" 
-                  AllowDowngrades="no" 
-                  Schedule="afterInstallValidate" />
-    
+             Manufacturer="vanshcodeworks" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Burrow is already installed." />
     <MediaTemplate EmbedCab="yes" />
-    
-    <!-- Application Icon -->
-    <Icon Id="icon.ico" SourceFile="$(var.ProjectDir)..\docs\assets\burrow-icon.ico" />
-    <Property Id="ARPPRODUCTICON" Value="icon.ico" />
-    
-    <!-- Feature: Main Burrow executable -->
-    <Feature Id="MainFeature" Title="Burrow" Level="1" ConfigurableDirectory="INSTALLDIR">
-      <ComponentGroupRef Id="BurrowComponents" />
-    </Feature>
-    
-    <!-- Feature: Shell Completions (optional) -->
-    <Feature Id="CompletionsFeature" Title="Shell Completions" Level="1" ConfigurableDirectory="INSTALLDIR">
-      <ComponentGroupRef Id="CompletionsComponents" />
-    </Feature>
-    
-    <!-- ARP (Add/Remove Programs) entries -->
+
+    <!-- Add/Remove Programs entries -->
     <Property Id="ARPCOMMENTS" Value="Native Windows local development environment manager" />
     <Property Id="ARPCONTACT" Value="vanshcodeworks" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/vanshcodeworks/burrow" />
     <Property Id="ARPURLUPDATEINFO" Value="https://github.com/vanshcodeworks/burrow/releases" />
     <Property Id="ARPHELPLINK" Value="https://github.com/vanshcodeworks/burrow" />
-    <Property Id="ARPNOREMOVE" Value="no" />
-    <Property Id="ARPNOREPAIR" Value="no" />
-    <Property Id="ARPNOModify" Value="no" />
-    
-    <!-- Installation Directory: %LOCALAPPDATA%\vanshcodeworks\Burrow -->
+    <Property Id="ARPINSTALLLOCATION" Value="[INSTALLDIR]" />
+
     <Directory Id="TARGETDIR" Name="SourceDir">
+      <!-- Per-user install: %LOCALAPPDATA%\vanshcodeworks\Burrow -->
       <Directory Id="LocalAppDataFolder">
         <Directory Id="VanshCodeworksDir" Name="vanshcodeworks">
           <Directory Id="INSTALLDIR" Name="Burrow">
-            <Component Id="BurrowExe" Guid="{BURROW-EXE-GUID}" Permanent="no">
-              <File Id="burrow.exe" Source="$(var.BuildDir)burrow.exe" KeyPath="yes" Vital="yes" Checksum="yes" />
-              <Shortcut Id="StartMenuShortcut" 
-                        Directory="ProgramMenuDir" 
-                        Name="Burrow" 
-                        Target="[INSTALLDIR]burrow.exe" 
-                        WorkingDirectory="INSTALLDIR" 
+            <Component Id="BurrowExecutable" Guid="8CA070B0-F941-4591-B5CA-299349329C2C">
+              <File Id="BurrowExe" Source="$(var.BuildDir)burrow.exe" KeyPath="yes" Vital="yes" />
+              <RegistryValue Root="HKCU"
+                             Key="Software\vanshcodeworks\Burrow"
+                             Name="InstallPath"
+                             Type="string"
+                             Value="[INSTALLDIR]" />
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+
+      <!-- vanshcodeworks\Burrow Start Menu folder -->
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="VanshCodeworksMenu" Name="vanshcodeworks">
+          <Directory Id="BurrowMenu" Name="Burrow">
+            <Component Id="BurrowStartMenuShortcut" Guid="0F77DE76-3698-45C6-A133-F9CA4F9D6EC3">
+              <Shortcut Id="StartMenuBurrow"
+                        Name="Burrow"
                         Description="Native Windows local development environment manager"
-                        Icon="icon.ico" />
-              <Shortcut Id="DesktopShortcut" 
-                        Directory="DesktopFolder" 
-                        Name="Burrow" 
-                        Target="[INSTALLDIR]burrow.exe" 
-                        WorkingDirectory="INSTALLDIR" 
-                        Description="Native Windows local development environment manager"
-                        Icon="icon.ico" />
-              <RegistryValue Root="HKCU" 
-                             Key="Software\vanshcodeworks\Burrow" 
-                             Name="InstallPath" 
-                             Value="[INSTALLDIR]" 
-                             Type="string" 
+                        Target="[INSTALLDIR]burrow.exe"
+                        WorkingDirectory="INSTALLDIR" />
+              <RemoveFolder Id="RemoveBurrowMenu" Directory="BurrowMenu" On="uninstall" />
+              <RemoveFolder Id="RemoveVanshCodeworksMenu" Directory="VanshCodeworksMenu" On="uninstall" />
+              <RegistryValue Root="HKCU"
+                             Key="Software\vanshcodeworks\Burrow"
+                             Name="StartMenuShortcut"
+                             Type="integer"
+                             Value="1"
                              KeyPath="yes" />
             </Component>
           </Directory>
         </Directory>
       </Directory>
-      
-      <!-- Program Menu Folder -->
-      <Directory Id="ProgramMenuFolder">
-        <Directory Id="ProgramMenuDir" Name="vanshcodeworks\Burrow" />
-      </Directory>
-      
-      <!-- Desktop Folder -->
-      <Directory Id="DesktopFolder" Name="Desktop" />
     </Directory>
-    
-    <!-- Components -->
-    <ComponentGroup Id="BurrowComponents">
-      <ComponentRef Id="BurrowExe" />
-    </ComponentGroup>
-    
-    <!-- UI: Minimal WixUI -->
+
+    <Feature Id="MainFeature" Title="Burrow" Level="1">
+      <ComponentRef Id="BurrowExecutable" />
+      <ComponentRef Id="BurrowStartMenuShortcut" />
+    </Feature>
+
     <UIRef Id="WixUI_Minimal" />
     <UIRef Id="WixUI_ErrorProgressText" />
-    
-    <!-- Custom Actions: None needed for portable exe -->
-    
   </Product>
 </Wix>

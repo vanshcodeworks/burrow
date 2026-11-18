@@ -11,6 +11,8 @@ retrieved on 2026-10-26. A Docker Compose startup benchmark was run separately o
 2026-10-25 UTC and is reported in [`docs/benchmarks.md`](../benchmarks.md); it does
 not change the documentation-based claims below. No other competitor was run.
 Burrow's own measurements come from [`docs/benchmarks.md`](../benchmarks.md).
+Coming from Compose? See the
+[migration guide](../migration-from-docker-compose.md).
 Last reviewed: 2026-10-26.
 
 ## What Burrow is
@@ -27,8 +29,11 @@ ephemeral and is not a Compose replacement. See [`README.md`](../../README.md),
 [`docs/security.md`](../security.md), and
 [`docs/compatibility.md`](../compatibility.md).
 
-There is no published release or signed installer yet; the documented install
-path is `cargo install --path crates\burrow-cli --locked` from a checkout.
+The supported install paths are `cargo install --path crates\burrow-cli --locked`
+from a checkout and the verified zip on the
+[v0.1.0 GitHub Release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0).
+Package-manager manifests are drafts awaiting publication; the binaries are
+unsigned.
 
 ## At a glance
 

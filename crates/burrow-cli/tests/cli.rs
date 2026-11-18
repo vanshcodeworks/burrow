@@ -374,6 +374,39 @@ fn env_for_a_package_service_does_not_download_the_package() {
 }
 
 #[test]
+fn env_with_a_configured_seed_file_does_not_render_seed_placeholders_early() {
+    let project = TestProject::new(
+        "[project]\nname = \"seedenv\"\n\n\
+         [services.db]\n\
+         use = \"postgres@16\"\n\
+         seed = \"db/init.sql\"\n",
+    );
+    let seed = project.path().join("db").join("init.sql");
+    fs::create_dir_all(seed.parent().expect("seed parent")).expect("create seed dir");
+    fs::write(&seed, "SELECT 1;\n").expect("write seed file");
+
+    let cache = project.path().join("cache");
+    let output = run_with_cache(project.path(), &cache, &["env", "--format", "json"]);
+    assert!(
+        output.status.success(),
+        "env with a seed file failed:\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(
+        !stderr(&output).contains("{{seed_file}}"),
+        "seed placeholder leaked into an error:\n{}",
+        stderr(&output)
+    );
+    assert!(
+        !cache.join("archives").exists(),
+        "burrow env downloaded a package archive"
+    );
+    let values: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("env JSON");
+    assert!(values["BURROW_DB_PORT"].as_str().is_some());
+}
+
+#[test]
 fn exec_uses_the_service_environment_working_directory_and_exit_code() {
     let project = TestProject::new(
         "[project]\nname = \"execproj\"\n\n\

@@ -18,8 +18,9 @@ dashboard. PostgreSQL, NATS, and Caddy are managed as native Windows processes;
 other services can run as commands or through an optional Docker/Podman
 fallback. There is no telemetry, and the code is MIT OR Apache-2.0.
 
-Windows 11 x86-64 is verified; Windows 10 and ARM64 are not yet verified. There
-is no signed installer or published release yet. Try it from a checkout with
+Windows 11 x86-64 is verified; Windows 10 and ARM64 are not yet verified. The
+v0.1.0 release and its verified zip are on GitHub; the binaries are unsigned and
+the package-manager manifests are drafts. Try it from a checkout with
 `cargo install --path crates\burrow-cli --locked`, then run the
 `examples\node-postgres` stack. Details: [`README.md`](../../README.md).
 
@@ -88,7 +89,8 @@ alternative is the better fit.
 
 **Try it**
 
-There is no signed installer or published release yet. From a checkout:
+The v0.1.0 release zip is available on GitHub; the binaries are unsigned and the
+package-manager manifests are drafts. From a checkout:
 
 ```powershell
 cargo install --path crates\burrow-cli --locked
@@ -138,8 +140,9 @@ vs 10.7 s). Those are small samples on one machine, not a benchmark suite; the
 method and raw JSON are in the repo. Only Docker Compose was run; the other
 comparisons are documentation-based.
 
-There is no signed installer yet, so the current path is `cargo install --path
-crates\burrow-cli --locked` from a checkout. I would especially value Windows 10
+The binaries are unsigned and the package-manager manifests are drafts, so the
+current path is `cargo install --path crates\burrow-cli --locked` from a checkout
+or the verified zip on GitHub Releases. I would especially value Windows 10
 and ARM64 results, Podman parity checks, and honest feedback on where the
 native-process model is the wrong tool. Source and docs:
 <https://github.com/vanshcodeworks/burrow>.

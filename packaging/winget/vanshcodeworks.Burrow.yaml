@@ -1,7 +1,8 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.6.0.schema.json
 #
 # vanshcodeworks.Burrow - v0.1.0
-# Generated from release v0.1.0
+# Draft manifest: pending submission to microsoft/winget-pkgs.
+# InstallerSha256 must match the published v0.1.0 GitHub Release asset.
 
 PackageIdentifier: vanshcodeworks.Burrow
 PackageVersion: 0.1.0
@@ -10,7 +11,6 @@ Publisher: vanshcodeworks
 PublisherUrl: https://github.com/vanshcodeworks
 PublisherSupportUrl: https://github.com/vanshcodeworks/burrow/issues
 Author: vanshcodeworks
-PackageName: Burrow
 PackageUrl: https://github.com/vanshcodeworks/burrow
 License: MIT OR Apache-2.0
 LicenseUrl: https://github.com/vanshcodeworks/burrow/blob/main/LICENSE-MIT
@@ -19,23 +19,20 @@ CopyrightUrl: https://github.com/vanshcodeworks/burrow/blob/main/LICENSE-MIT
 ShortDescription: Native Windows local development environment manager
 Description: |
   Burrow runs services from one burrow.toml as native Windows processes, with
-  automatic ports, generated environment variables, health-checked startup,
-  verified package downloads, snapshots, and a live terminal dashboard. It does
-  not require Docker, a virtual machine, or WSL.
+  stable ports, generated environment variables, health-checked startup,
+  SHA-256-verified package downloads, snapshots, and a live terminal dashboard.
+  Built-in services: PostgreSQL 16, NATS 2.15 and Caddy 2.11. Other services
+  run from your PATH or through an optional container fallback. No Docker
+  daemon, VM or WSL is required for native services.
 Moniker: burrow
 Tags:
   - developer-tools
   - local-development
   - postgresql
-  - redis
-  - mongodb
   - nats
   - caddy
-  - mysql
-  - elasticsearch
   - rust
   - windows
-PackageUrl: https://github.com/vanshcodeworks/burrow
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip
@@ -45,9 +42,5 @@ Installers:
     NestedInstallerFiles:
       - RelativeFilePath: burrow.exe
         PortableCommandAlias: burrow
-    InstallerSwitches:
-      Silent: /S
-      SilentWithProgress: /S
-    ProductCode: "{BURROW-CODE}"
 ManifestType: singleton
 ManifestVersion: 1.6.0

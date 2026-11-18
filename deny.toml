@@ -19,6 +19,7 @@ targets = ["x86_64-pc-windows-msvc"]
 # cargo-deny does not treat informational advisories as a gate by default.
 ignore = [
     { id = "RUSTSEC-2024-0436", reason = "paste 1.0.15 is transitive via ratatui 0.29.0; no safe upgrade in this workspace; tracked in QUEUE.md" },
+    { id = "RUSTSEC-2026-0542", reason = "humantime 2.4.0 is unmaintained because it wraps unmaintained chrono; upstream states no safe upgrade exists. Burrow uses it only to parse duration strings in burrow.toml. Revisit when a maintained replacement is available." },
 ]
 
 [licenses]

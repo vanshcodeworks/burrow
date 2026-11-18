@@ -30,7 +30,7 @@ reviewable in the same change as its hash.
 ## File format
 
 ```toml
-schema = 1
+schema = 2
 name = "example"
 description = "One-line description"
 license = "MIT"
@@ -59,7 +59,7 @@ Unknown fields are rejected at every level, so a typo fails loudly.
 
 | Key | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `schema` | integer | yes | Must be `1`. |
+| `schema` | integer | yes | Must be `2`. |
 | `name` | string | yes | Package name: one or more lowercase ASCII letters, digits, `-`, or `_`. |
 | `description` | string | yes | Must not be empty. |
 | `license` | string | yes | Must not be empty. Use the upstream license identifier, for example `PostgreSQL` or `MIT`. |
@@ -81,10 +81,9 @@ They are compared numerically, not lexicographically, so `1.10` is newer than
 | Key | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `platforms` | table | yes for a runnable version | Artifacts keyed by platform. Only `windows-x86_64` is accepted. |
+| `steps` | array of commands | no | Initialization and seeding steps, in order (see below). |
 | `run` | command | required to start the service | Foreground command. |
 | `stop` | command | no | Graceful stop command, run before the process tree is killed. |
-| `init` | array of commands | no | Initialization steps, in order. |
-| `seed` | command | no | Runs once after the first successful health check. |
 | `url_template` | string | no | Value for `{{service.url}}`. Without it the URL is `http://127.0.0.1:<port>`. |
 | `health` | table | no | `tcp = true` and/or `http = "/path"`. If both are set, HTTP wins. |
 | `default_port` | integer | no | Metadata only. Burrow still allocates a port unless the project sets `port`. |
@@ -97,29 +96,30 @@ alone does not reject a version without it.
 A command is a table with a binary role and an argument list:
 
 ```toml
-init = [
+steps = [
   { program = "init", args = ["--data", "{{data_dir}}"], when = "data-empty" },
+  { program = "seed", args = ["--file", "{{seed_file}}"], when = "data-empty" },
 ]
 run = { program = "server", args = ["--host", "{{host}}", "--port", "{{port}}"] }
 stop = { program = "stop", args = ["{{data_dir}}"] }
-seed = { program = "seed", args = ["--file", "{{seed_file}}"] }
 ```
 
 `program` names a role in the platform's `binaries` map. It is not a bare
 executable name and it is not searched on `PATH`. Commands are executed directly
 without a shell, so arguments are passed exactly as written.
 
-`when` is optional on initialization steps. The only accepted value is
-`data-empty` (the default): the step runs when the service data directory is
-missing or empty. After all steps succeed, Burrow writes
+`when` is optional on steps. The only accepted value is `data-empty` (the
+default): the step runs when the service data directory is missing or empty.
+After all steps succeed, Burrow writes
 `.burrow/data/<service>/.burrow-initialized.json`. A later start skips
 initialization until `burrow reset <service>` removes the directory.
 
-The seed command runs once, after the service's first successful health check,
-and only when the project sets `seed`. Burrow records the script hash in
-`.burrow/data/<service>/.burrow-seeded.json`. Editing the script does not re-run
-it; `burrow reset <service>` does. A seed command without a configured seed file
-is not run.
+A step whose program is `seed`, `psql`, or `migrate` and whose arguments use
+`{{seed_file}}` is treated as the seed step. It runs once, after the service's
+first successful health check, and only when the project sets `seed`. Burrow
+records the script hash in `.burrow/data/<service>/.burrow-seeded.json`. Editing
+the script does not re-run it; `burrow reset <service>` does. A seed step without
+a configured seed file is not run.
 
 ### Placeholders
 
@@ -133,7 +133,7 @@ stray braces are errors.
 | `{{data_dir}}` | Absolute `.burrow/data/<service>` path. |
 | `{{project_dir}}` | Absolute project directory. |
 | `{{password}}` | The generated per-service secret. |
-| `{{seed_file}}` | Absolute path of the project's seed file; only in the seed command. |
+| `{{seed_file}}` | Absolute path of the project's seed file; only in the seed step. |
 
 Servers must still bind to loopback themselves. For example, PostgreSQL's entry
 passes `-c listen_addresses=127.0.0.1` in `run`. Burrow's loopback guarantee
@@ -175,8 +175,8 @@ init = "bin/init.exe"
 
 Binary paths use forward slashes. Absolute paths, drive letters, `..`, NUL,
 trailing dots or spaces, and reserved Windows device names (`CON`, `NUL`,
-`COM1`, ...) are rejected. Every `program` referenced by `init`, `run`, `stop`,
-or `seed` must have a matching role in `binaries`.
+`COM1`, ...) are rejected. Every `program` referenced by `steps`, `run`, or
+`stop` must have a matching role in `binaries`.
 
 The extractor is hardened independently of the registry:
 

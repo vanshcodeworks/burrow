@@ -30,12 +30,12 @@ move the project to a path under 260 characters. See
 
 ## Install
 
-This repository does not yet publish crates.io or GitHub release artifacts.
-Build the only supported artifact from a checkout:
+Install from a source checkout, or download the verified zip from the
+[v0.1.0 GitHub Release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0):
 
 ```powershell
-git clone <repository-url>
-cd Burrow
+git clone https://github.com/vanshcodeworks/burrow.git
+cd burrow
 cargo install --path crates\burrow-cli --locked
 ```
 
@@ -50,9 +50,9 @@ If you prefer not to install, `cargo run -p burrow-cli -- <command>` works from
 the checkout. Do not copy a debug `target\debug\burrow.exe` over an installed
 release build.
 
-Future release archives, winget, and Scoop manifests are described in
-[`packaging/`](../packaging/). Until a release exists, those files contain
-explicit placeholders and are drafts, not working installers.
+The winget, Scoop, Chocolatey, and MSI manifests in
+[`packaging/`](../packaging/) are drafts pending store submission/review;
+`winget install` and `scoop install` will not work until they are published.
 
 ## Your first project
 

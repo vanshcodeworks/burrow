@@ -15,6 +15,10 @@ node_modules/
 __pycache__/
 *.pyc
 
+# Local packaging artifacts (built from target/release, never committed)
+*.nupkg
+packaging/chocolatey/tools/burrow.exe
+
 # Editors
 .idea/
 .vscode/
