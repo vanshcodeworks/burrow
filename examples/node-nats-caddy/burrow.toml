@@ -1,0 +1,25 @@
+# Node API + NATS queue + Caddy static server.
+# Requires Node.js on PATH; NATS and Caddy are downloaded and verified by Burrow.
+
+[project]
+name = "node-nats-caddy"
+
+[services.queue]
+use = "nats@2"
+memory = "128MB"
+health = { tcp = true }
+
+[services.api]
+run = "node server.js"
+needs = ["queue"]
+env = { NATS_URL = "{{queue.url}}", PORT = "{{api.port}}" }
+health = { http = "/health", timeout = "60s" }
+restart = "on-failure"
+route = "api.localhost"
+
+[services.web]
+use = "caddy@2"
+needs = ["api"]
+# The built-in Caddy package runs `file-server` over its own data directory.
+# Put static assets there, or replace it with your own `run = "caddy run ..."`.
+route = "web.localhost"

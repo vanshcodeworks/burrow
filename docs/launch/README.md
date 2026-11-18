@@ -13,6 +13,9 @@ manifests are drafts. The guaranteed install path is still from a checkout.
   post-launch steps, including the human-only actions.
 - [`screenshots.md`](screenshots.md) - a shot list and capture commands. No
   screenshots are committed yet.
+- [`CHANNELS.md`](CHANNELS.md) - channel-specific drafts for Show HN, Reddit, X,
+  dev.to and short video, plus prepared responses to common questions.
+- [`CALENDAR.md`](CALENDAR.md) - a two-week launch sequence and success signals.
 - [`../demo.md`](../demo.md) - the five-minute recording script.
 
 ## Rules for using these drafts

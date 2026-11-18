@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Measured Burrow vs Docker Compose numbers on one Windows 11 machine">
+  <title>Burrow measured numbers versus Docker Compose</title>
+  <desc>Warm-start HTTP 200: Burrow 1.84 to 1.88 seconds, Docker Compose 1.92 to 3.20 seconds. Memory: Burrow daemon 10.9 to 11.0 MB, Compose containers 37.2 to 62.1 MB excluding the VM. Cold start: Burrow 10.7 seconds, Compose 4.11 seconds. One machine, small samples.</desc>
+
+  <defs>
+    <style>
+      .paper { fill: #F3E9D8; }
+      .card { fill: #FBF6EC; stroke: #D8C9AE; stroke-width: 2; }
+      .ink { fill: #1C1A17; font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
+      .muted { fill: #6B6153; font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
+      .tangerine { fill: #D95F1E; }
+      .grass { fill: #4E7A43; }
+      .label { font-size: 22px; font-weight: 700; letter-spacing: 0.5px; }
+      .value { font-size: 46px; font-weight: 800; }
+      .small { font-size: 15px; }
+      .tiny { font-size: 13px; }
+      .title { font-size: 40px; font-weight: 800; letter-spacing: -0.5px; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="630" class="paper"/>
+
+  <!-- Header -->
+  <text x="60" y="72" class="ink title">Native Windows, measured.</text>
+  <text x="60" y="106" class="muted small">One Windows 11 machine (Ryzen 7 4800H, 15.4 GB RAM), same project, same seed, same endpoint. Docker Compose was run; other tools were not.</text>
+  <rect x="60" y="122" width="1080" height="3" class="tangerine"/>
+
+  <!-- Card 1: warm start -->
+  <rect x="60" y="150" width="344" height="300" rx="10" class="card"/>
+  <text x="84" y="184" class="muted label">WARM START → HTTP 200</text>
+  <text x="84" y="238" class="ink value">1.87 s</text>
+  <text x="84" y="266" class="grass small">Burrow (1.84–1.88 s)</text>
+  <rect x="84" y="286" width="244" height="10" rx="5" class="grass"/>
+  <text x="84" y="330" class="ink value" style="font-size:34px">1.92–3.20 s</text>
+  <text x="84" y="356" class="tangerine small">Docker Compose</text>
+  <rect x="84" y="372" width="286" height="10" rx="5" class="tangerine"/>
+  <text x="84" y="414" class="muted tiny">No VM, no Docker daemon for built-in services.</text>
+
+  <!-- Card 2: memory -->
+  <rect x="428" y="150" width="344" height="300" rx="10" class="card"/>
+  <text x="452" y="184" class="muted label">SERVICE MEMORY</text>
+  <text x="452" y="238" class="ink value">11 MB</text>
+  <text x="452" y="266" class="grass small">Burrow daemon (10.9–11.0 MB)</text>
+  <rect x="452" y="286" width="40" height="10" rx="5" class="grass"/>
+  <text x="452" y="330" class="ink value" style="font-size:34px">37–62 MB</text>
+  <text x="452" y="356" class="tangerine small">Compose containers</text>
+  <rect x="452" y="372" width="230" height="10" rx="5" class="tangerine"/>
+  <text x="452" y="414" class="muted tiny">Not like-for-like: excludes the Docker VM.</text>
+
+  <!-- Card 3: honest caveat -->
+  <rect x="796" y="150" width="344" height="300" rx="10" class="card"/>
+  <text x="820" y="184" class="muted label">COLD START → HTTP 200</text>
+  <text x="820" y="238" class="ink value" style="font-size:38px">10.7 s Burrow</text>
+  <text x="820" y="274" class="ink value" style="font-size:38px">4.11 s Compose</text>
+  <text x="820" y="316" class="muted small">Compose initialized empty application data faster.</text>
+  <line x1="820" y1="336" x2="1116" y2="336" stroke="#D8C9AE" stroke-width="2"/>
+  <text x="820" y="368" class="ink small" font-weight="700">What Burrow removes</text>
+  <text x="820" y="394" class="small ink">✓ Linux VM / WSL backend</text>
+  <text x="820" y="420" class="small ink">✓ Fixed ports and password plumbing</text>
+  <text x="820" y="446" class="small ink">✓ Image builds for native services</text>
+
+  <!-- Footer -->
+  <text x="60" y="500" class="ink label" font-size="22">From docker-compose.yml to burrow.toml in one command</text>
+  <rect x="60" y="518" width="700" height="46" rx="6" fill="#1C1A17"/>
+  <text x="82" y="548" fill="#FBF6EC" font-family="Consolas, monospace" font-size="20">burrow init --from .\docker-compose.yml</text>
+
+  <text x="60" y="592" class="muted tiny">Source: docs/benchmarks.md and docs/benchmarks/2026-10-25-stacks.json. Small samples on one machine; not a full benchmark suite. First start downloads and verifies a 356 MB PostgreSQL archive.</text>
+  <text x="60" y="612" class="muted tiny" font-weight="700">github.com/vanshcodeworks/burrow · MIT OR Apache-2.0</text>
+</svg>

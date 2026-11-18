@@ -4,6 +4,28 @@ This guide maps a `docker-compose.yml` to a `burrow.toml`. It is for Windows
 developers whose compose file mainly starts a database, a queue, and an app on
 their own machine — not for production or multi-host deployments.
 
+## Convert it automatically
+
+From your project directory, point Burrow at the compose file:
+
+```powershell
+burrow init --from .\docker-compose.yml
+burrow doctor
+burrow up
+```
+
+The converter writes a commented `burrow.toml` and refuses to overwrite an
+existing one. It maps built-in images (`postgres:16`, `nats:2`, `caddy:2`) to
+managed packages, everything else to `use = "container:IMAGE"`, and carries over
+commands, environment variables, dependencies, health checks, seed mounts,
+memory limits and restart policies. Docker-only fields it cannot express are
+listed as comments at the end of the file — review them before `burrow up`.
+
+The YAML support is intentionally limited to the common Compose subset. If your
+file uses advanced features (anchors, merge keys, profiles, extension fields),
+the converter reports the line it cannot parse; write the `burrow.toml` by hand
+using the mapping below instead.
+
 ## What maps to what
 
 | Docker Compose | Burrow |

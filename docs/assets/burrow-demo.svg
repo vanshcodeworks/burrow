@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Animated demo: burrow up starts a native stack, then burrow top shows the live dashboard">
+  <title>Burrow demo: burrow up and burrow top</title>
+  <desc>A terminal runs burrow up. Burrow downloads and verifies PostgreSQL, starts the database and API natively, prints stable localhost routes, then burrow top shows a live dashboard. Reduced-motion users see the final state.</desc>
+
+  <defs>
+    <style>
+      .paper { fill: #F3E9D8; }
+      .terminal { fill: #171613; }
+      .bar { fill: #26241F; }
+      .ink { fill: #F3E9D8; font-family: Consolas, 'Cascadia Mono', Menlo, monospace; }
+      .dim { fill: #A79C88; font-family: Consolas, 'Cascadia Mono', Menlo, monospace; }
+      .green { fill: #7FB069; font-family: Consolas, 'Cascadia Mono', Menlo, monospace; }
+      .orange { fill: #F08A4B; font-family: Consolas, 'Cascadia Mono', Menlo, monospace; }
+      .muted { fill: #6B6153; font-family: 'Segoe UI', Arial, sans-serif; }
+      .caption { fill: #1C1A17; font-family: 'Segoe UI', Arial, sans-serif; }
+      .stage { opacity: 0; }
+      @media (prefers-reduced-motion: reduce) {
+        .stage { opacity: 1; }
+      }
+    </style>
+  </defs>
+
+  <rect width="1200" height="630" class="paper"/>
+  <text x="48" y="52" class="caption" font-size="30" font-weight="800">One command. A whole native stack.</text>
+  <text x="48" y="78" class="muted" font-size="15">No Docker daemon, no VM, no WSL for built-in services.</text>
+
+  <!-- Terminal window -->
+  <rect x="48" y="100" width="1104" height="460" rx="12" class="terminal"/>
+  <rect x="48" y="100" width="1104" height="38" rx="12" class="bar"/>
+  <rect x="48" y="126" width="1104" height="12" class="bar"/>
+  <circle cx="74" cy="119" r="6" fill="#F08A4B"/>
+  <circle cx="96" cy="119" r="6" fill="#7FB069"/>
+  <circle cx="118" cy="119" r="6" fill="#A79C88"/>
+  <text x="140" y="124" class="dim" font-size="13">powershell — C:\dev\my-app</text>
+
+  <!-- Stage 1: command -->
+  <g class="stage">
+    <animate attributeName="opacity" from="0" to="1" begin="0.4s" dur="0.01s" fill="freeze"/>
+    <text x="76" y="166" class="ink" font-size="19"><tspan class="green">PS&gt;</tspan> burrow up</text>
+  </g>
+
+  <!-- Stage 2: trust + verify -->
+  <g class="stage">
+    <animate attributeName="opacity" from="0" to="1" begin="1.6s" dur="0.01s" fill="freeze"/>
+    <text x="76" y="202" class="dim" font-size="17">  trust  native services will run with your user rights</text>
+    <text x="76" y="230" class="dim" font-size="17">  pkg    postgres@16.15  SHA-256 verified  (cache hit)</text>
+  </g>
+
+  <!-- Stage 3: services -->
+  <g class="stage">
+    <animate attributeName="opacity" from="0" to="1" begin="3.0s" dur="0.01s" fill="freeze"/>
+    <text x="76" y="266" class="green" font-size="17">  ok     db      healthy  tcp  127.0.0.1:40002</text>
+    <text x="76" y="294" class="green" font-size="17">  ok     queue   healthy  tcp  127.0.0.1:40003</text>
+    <text x="76" y="322" class="green" font-size="17">  ok     api     healthy  http 127.0.0.1:40004</text>
+  </g>
+
+  <!-- Stage 4: routes -->
+  <g class="stage">
+    <animate attributeName="opacity" from="0" to="1" begin="4.4s" dur="0.01s" fill="freeze"/>
+    <text x="76" y="358" class="orange" font-size="17">  route  api.localhost  →  127.0.0.1:40004</text>
+    <text x="76" y="386" class="dim" font-size="17">  ready in 1.87 s  ·  ctrl+c or `burrow down` to stop</text>
+  </g>
+
+  <!-- Stage 5: top -->
+  <g class="stage">
+    <animate attributeName="opacity" from="0" to="1" begin="5.8s" dur="0.01s" fill="freeze"/>
+    <text x="76" y="430" class="ink" font-size="19"><tspan class="green">PS&gt;</tspan> burrow top</text>
+    <rect x="76" y="446" width="1052" height="94" rx="6" fill="#22201B" stroke="#3A362E"/>
+    <text x="92" y="470" class="dim" font-size="14">SERVICE   STATUS   CPU    MEM     UPTIME</text>
+    <text x="92" y="494" class="green" font-size="14">db        up       2.1%   104 MB  00:01:22</text>
+    <text x="92" y="518" class="green" font-size="14">api       up       0.4%   55 MB   00:01:21</text>
+    <text x="700" y="494" class="green" font-size="14">queue     up       0.2%   8 MB</text>
+    <text x="700" y="518" class="orange" font-size="14">logs      streaming ···</text>
+  </g>
+
+  <text x="48" y="592" class="caption" font-size="16" font-weight="700">github.com/vanshcodeworks/burrow</text>
+  <text x="452" y="592" class="muted" font-size="14">Install: iwr https://raw.githubusercontent.com/vanshcodeworks/burrow/main/scripts/install.ps1 | iex</text>
+  <text x="48" y="614" class="muted" font-size="12">1.87 s and 11 MB are measured on one Windows 11 machine with small samples. See docs/benchmarks.md.</text>
+</svg>

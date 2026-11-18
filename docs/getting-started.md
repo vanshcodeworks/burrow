@@ -30,8 +30,22 @@ move the project to a path under 260 characters. See
 
 ## Install
 
-Install from a source checkout, or download the verified zip from the
-[v0.1.0 GitHub Release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0):
+The fastest install downloads the published release, verifies its SHA-256 and
+installs `burrow.exe` per-user (no administrator rights):
+
+```powershell
+iwr https://raw.githubusercontent.com/vanshcodeworks/burrow/main/scripts/install.ps1 | iex
+```
+
+Review the script first if you prefer:
+
+```powershell
+iwr https://raw.githubusercontent.com/vanshcodeworks/burrow/main/scripts/install.ps1 -OutFile install.ps1
+notepad .\install.ps1
+.\install.ps1
+```
+
+Or build from a source checkout:
 
 ```powershell
 git clone https://github.com/vanshcodeworks/burrow.git

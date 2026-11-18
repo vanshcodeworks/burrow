@@ -899,6 +899,69 @@ fn init_without_a_detectable_stack_explains_the_templates() {
 }
 
 #[test]
+fn init_from_compose_converts_services_and_notes_docker_only_fields() {
+    let dir = tempfile::tempdir().expect("create project directory");
+    fs::write(
+        dir.path().join("docker-compose.yml"),
+        r#"services:
+  db:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+  cache:
+    image: redis:7
+  api:
+    build: .
+    command: node server.js
+    depends_on:
+      - db
+      - cache
+"#,
+    )
+    .expect("write compose file");
+
+    let output = run_in(
+        dir.path(),
+        &["init", "--from", "docker-compose.yml", "--json"],
+    );
+    assert!(
+        output.status.success(),
+        "init --from failed:\n{}",
+        stderr(&output)
+    );
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("init --json prints JSON");
+    assert_eq!(report["template"], "compose");
+    assert_eq!(report["services"].as_array().expect("services").len(), 3);
+
+    let config = fs::read_to_string(dir.path().join("burrow.toml")).expect("read burrow.toml");
+    assert!(config.contains("use = \"postgres@16\""));
+    assert!(config.contains("use = \"container:redis:7\""));
+    assert!(config.contains("run = 'node server.js'"));
+    assert!(config.contains("needs = [\"db\", \"cache\"]"));
+    assert!(config.contains("seed = \"./db/init.sql\""));
+    assert!(config.contains("compose ports:"));
+    assert!(config.contains("Conversion notes:"));
+
+    let again = run_in(dir.path(), &["init", "--from", "docker-compose.yml"]);
+    assert!(!again.status.success(), "a second init must fail");
+}
+
+#[test]
+fn init_rejects_template_and_from_together() {
+    let dir = tempfile::tempdir().expect("create project directory");
+    fs::write(dir.path().join("docker-compose.yml"), "services: {}\n").expect("write");
+    let output = run_in(
+        dir.path(),
+        &["init", "--template", "node", "--from", "docker-compose.yml"],
+    );
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("cannot be used with"));
+}
+
+#[test]
 fn doctor_reports_a_valid_project_as_json() {
     let config = format!(
         "[project]\nname = \"diagnosed\"\n\n[services.api]\n{}\n",

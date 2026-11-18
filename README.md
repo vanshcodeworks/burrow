@@ -10,17 +10,34 @@
 
 ## Quick Install
 
-Burrow is a single Windows executable. The supported install path today is building from source (about 4 minutes the first time) or downloading the verified zip from GitHub Releases.
+One line, no administrator rights. It downloads the published release,
+verifies its SHA-256 against `SHA256SUMS.txt` from the same release, installs
+`burrow.exe` per-user and adds it to your PATH:
 
 ```powershell
-# From a source checkout
+iwr https://raw.githubusercontent.com/vanshcodeworks/burrow/main/scripts/install.ps1 | iex
+```
+
+Prefer to review before running? Download the script first:
+
+```powershell
+iwr https://raw.githubusercontent.com/vanshcodeworks/burrow/main/scripts/install.ps1 -OutFile install.ps1
+notepad .\install.ps1
+.\install.ps1
+```
+
+Or build from source (about 4 minutes the first time):
+
+```powershell
 git clone https://github.com/vanshcodeworks/burrow.git
 cd burrow
 cargo install --path crates\burrow-cli --locked
 burrow --version
 ```
 
-Other distribution channels are **not published yet**: the winget, Scoop, Chocolatey, and MSI manifests in [`packaging/`](packaging/README.md) are drafts pending store submission/review, so `winget install vanshcodeworks.Burrow` and `scoop install burrow` will not work until then. The prebuilt `burrow-v0.1.0-windows-x86_64.zip` (with SHA-256 checksums) is attached to the [v0.1.0 GitHub Release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0).
+winget, Scoop, Chocolatey and MSI manifests in [`packaging/`](packaging/README.md)
+are drafts pending store submission/review. The prebuilt zip and its checksums
+are on the [v0.1.0 GitHub Release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.1.0).
 
 ---
 
@@ -105,6 +122,28 @@ burrow up
 ```
 
 The first `burrow up` shows a trust summary, downloads the verified PostgreSQL archive (356 MB), initializes the cluster, seeds it, and starts both services. Later starts that reuse the package cache and initialized cluster take **~1.87 s** on the benchmark machine.
+
+**Already have a `docker-compose.yml`? Convert it instead of hand-writing a config:**
+
+```powershell
+cd C:\dev\my-app
+burrow init --from .\docker-compose.yml
+burrow up
+```
+
+Burrow maps images to built-in packages where possible (`postgres:16` →
+`postgres@16`), uses the container fallback for everything else (`redis:7` →
+`container:redis:7`), carries over commands, environment variables, dependencies,
+health checks, seed mounts, memory limits and restart policies, and writes a
+commented `burrow.toml` listing every Docker-only field it could not translate.
+See the [migration guide](docs/migration-from-docker-compose.md).
+
+<details>
+<summary>Watch the flow (animated terminal)</summary>
+
+![Animated demo of burrow up and burrow top](docs/assets/burrow-demo.svg)
+
+</details>
 
 Open `http://api.localhost` or the direct loopback URL from `burrow status`. Press `Ctrl+C` or run `burrow down` to stop.
 
@@ -537,6 +576,8 @@ Removes `.burrow/data/<service>/` including init/seed markers. Next `burrow up` 
 
 Real measurements from [`docs/benchmarks.md`](docs/benchmarks.md), not estimates. Recorded on **AMD Ryzen 7 4800H (8C/16T), 15.4 GB RAM, Windows 11 10.0.26200**, Burrow 0.1.0 release build (`lto = "thin"`), Rust 1.94.1.
 
+[![Measured numbers: warm start, memory and cold-start caveat](docs/assets/burrow-numbers.svg)](docs/assets/burrow-numbers.svg)
+
 ### Burrow-only
 
 | Scenario | Time to Ready | Daemon RSS | Whole Tree RSS |
@@ -878,6 +919,9 @@ See [Security and trust](docs/security.md) for the full model. Report vulnerabil
 | Document | Description |
 |----------|-------------|
 | [Getting Started](docs/getting-started.md) | Full walkthrough from install to first stack |
+| [Example Stacks](docs/examples.md) | Copy-paste `burrow.toml` files for common setups |
+| [Run Services Without Docker on Windows](docs/run-services-without-docker-windows.md) | When native binaries help and when a container fallback is needed |
+| [Community](docs/community.md) | Support channels, good first issues, how to report a bug |
 | [Compatibility](docs/compatibility.md) | Exact probe, evidence, and unverified rows |
 | [Comparison with Other Tools](docs/comparisons/README.md) | Sourced comparison: Docker, Podman, Process Compose, Overmind, Dev Containers, WinSW, NSSM |
 | [Migrating from Docker Compose](docs/migration-from-docker-compose.md) | Map `docker-compose.yml` to `burrow.toml`, service by service |

@@ -53,19 +53,37 @@ Errors are written to stderr in the form `error: ...`, often followed by a
 
 ## Project setup
 
-### `burrow init [--template NAME]`
+### `burrow init [--template NAME | --from PATH]`
 
 Writes `burrow.toml` in the project directory. It never overwrites an existing
-file and creates no extra files that would overwrite yours. Without
-`--template`, it detects, in order: Node.js (`package.json` with a dev or start
-script), Python (`main.py` or `app.py`), Cargo (`Cargo.toml` + `src/main.rs`),
-Go (`go.mod`). Named templates are `node`, `python`, `postgres`, `cargo`, and
-`go`.
+file and creates no extra files that would overwrite yours. `--template` and
+`--from` are mutually exclusive.
+
+Without either flag, it detects, in order: Node.js (`package.json` with a dev or
+start script), Python (`main.py` or `app.py`), Cargo (`Cargo.toml` +
+`src/main.rs`), Go (`go.mod`). Named templates are `node`, `python`, `postgres`,
+`cargo`, and `go`.
+
+`--from PATH` converts a Docker Compose YAML file. It supports the common
+Compose subset (indentation-based maps and sequences, quoted scalars, inline
+collections, literal/folded block scalars) and reports unsupported syntax with
+a line number. Mappings:
+
+- `postgres:16`, `nats:2`, `caddy:2` → built-in `use = "..."`
+- other images → `use = "container:IMAGE"` with `container_port`
+- `build` / `command` → `run`
+- `environment`, `depends_on`, `healthcheck`, `volumes` seed mounts, `mem_limit`
+  and `restart` → the matching Burrow fields
+- fixed `ports`, `networks` and named volumes are not copied; commented notes
+  in the generated file list everything that was dropped
+
+See the [migration guide](migration-from-docker-compose.md) for the full mapping
+and the behavioral differences.
 
 The generated configuration is parsed and validated before any file is written.
 Human output lists the services and the next commands; `--json` returns the
-template, summary, project name, directory, config path, services, and created
-files.
+template (`compose` for conversions), summary, project name, directory, config
+path, services, and created files.
 
 ### `burrow schema`
 

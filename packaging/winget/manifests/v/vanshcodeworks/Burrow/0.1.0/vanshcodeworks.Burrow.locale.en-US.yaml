@@ -1,0 +1,32 @@
+PackageIdentifier: vanshcodeworks.Burrow
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: vanshcodeworks
+PublisherUrl: https://github.com/vanshcodeworks
+PublisherSupportUrl: https://github.com/vanshcodeworks/burrow/issues
+Author: vanshcodeworks
+PackageName: Burrow
+PackageUrl: https://github.com/vanshcodeworks/burrow
+License: MIT
+LicenseUrl: https://github.com/vanshcodeworks/burrow/blob/main/LICENSE-MIT
+Copyright: Copyright (c) vanshcodeworks
+ShortDescription: Native Windows local development environment manager
+Description: |
+  Burrow runs services from one burrow.toml as native Windows processes, with
+  stable ports, generated environment variables, health-checked startup,
+  SHA-256-verified package downloads, snapshots, and a live terminal dashboard.
+  Built-in services: PostgreSQL 16, NATS 2.15 and Caddy 2.11. Other services
+  run from your PATH or through an optional container fallback. No Docker
+  daemon, VM or WSL is required for native services. The code is dual-licensed
+  MIT OR Apache-2.0.
+Moniker: burrow
+Tags:
+  - developer-tools
+  - local-development
+  - postgresql
+  - nats
+  - caddy
+  - rust
+  - windows
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

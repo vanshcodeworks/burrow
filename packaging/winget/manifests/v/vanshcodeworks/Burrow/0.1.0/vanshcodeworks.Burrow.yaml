@@ -1,0 +1,5 @@
+PackageIdentifier: vanshcodeworks.Burrow
+PackageVersion: 0.1.0
+DefaultLocale: en-US
+ManifestType: singleton
+ManifestVersion: 1.6.0

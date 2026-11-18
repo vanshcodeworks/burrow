@@ -29,24 +29,24 @@ const SKIPPED_DIRECTORIES: [&str; 9] = [
     "build",
 ];
 
-struct Scaffold {
-    template: &'static str,
-    summary: String,
-    config: String,
-    services: Vec<ServicePreview>,
-    extra_files: Vec<(PathBuf, String)>,
+pub(crate) struct Scaffold {
+    pub(crate) template: &'static str,
+    pub(crate) summary: String,
+    pub(crate) config: String,
+    pub(crate) services: Vec<ServicePreview>,
+    pub(crate) extra_files: Vec<(PathBuf, String)>,
 }
 
 #[derive(Debug, Serialize)]
-struct ServicePreview {
-    name: String,
-    command: String,
+pub(crate) struct ServicePreview {
+    pub(crate) name: String,
+    pub(crate) command: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    route: Option<String>,
+    pub(crate) route: Option<String>,
 }
 
 /// Implements `burrow init`.
-pub fn run(options: &Options, template: Option<String>) -> Result<()> {
+pub fn run(options: &Options, template: Option<String>, from: Option<PathBuf>) -> Result<()> {
     let directory = project::resolve_directory(options.project.clone())?;
 
     let config_path = directory.join(burrow_config::CONFIG_FILE);
@@ -59,24 +59,33 @@ pub fn run(options: &Options, template: Option<String>) -> Result<()> {
     }
 
     let name = project_name(&directory);
-    let scaffold = match template.as_deref() {
-        Some("node") => node_scaffold(&directory, &name)?.with_context(|| {
-            "the `node` template needs a package.json with a dev or start script"
-        })?,
-        Some("python") => python_scaffold(&directory, &name)?.with_context(|| {
-            "the `python` template needs a Python entry point (main.py or app.py)"
-        })?,
-        Some("postgres") => postgres_scaffold(&name),
-        Some("cargo") => cargo_scaffold(&directory, &name)?
-            .with_context(|| "the `cargo` template needs Cargo.toml and src/main.rs")?,
-        Some("go") => {
-            go_scaffold(&directory, &name)?.with_context(|| "the `go` template needs go.mod")?
-        }
-        Some(other) => bail!(
-            "unknown template `{other}`\n\
+    let scaffold = if let Some(from) = from {
+        let source = if from.is_absolute() {
+            from
+        } else {
+            directory.join(from)
+        };
+        crate::compose::from_compose(&source, &name)?
+    } else {
+        match template.as_deref() {
+            Some("node") => node_scaffold(&directory, &name)?.with_context(|| {
+                "the `node` template needs a package.json with a dev or start script"
+            })?,
+            Some("python") => python_scaffold(&directory, &name)?.with_context(|| {
+                "the `python` template needs a Python entry point (main.py or app.py)"
+            })?,
+            Some("postgres") => postgres_scaffold(&name),
+            Some("cargo") => cargo_scaffold(&directory, &name)?
+                .with_context(|| "the `cargo` template needs Cargo.toml and src/main.rs")?,
+            Some("go") => {
+                go_scaffold(&directory, &name)?.with_context(|| "the `go` template needs go.mod")?
+            }
+            Some(other) => bail!(
+                "unknown template `{other}`\n\
              help: choose one of node, python, postgres, cargo, go, or omit --template to detect"
-        ),
-        None => detect(&directory, &name)?,
+            ),
+            None => detect(&directory, &name)?,
+        }
     };
 
     // Fail before writing anything if the generated file is not valid.

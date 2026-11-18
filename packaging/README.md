@@ -3,6 +3,9 @@
 Burrow is distributed as a single executable, `burrow.exe`. There is no installer
 service, background updater, or machine-wide agent.
 
+For the exact steps to open the winget/Scoop pull requests, push Chocolatey and
+build the MSI, see [`STORE_SUBMISSION.md`](STORE_SUBMISSION.md).
+
 ## Current status
 
 **Version:** v0.1.0. The source code and GitHub Release are real; the store

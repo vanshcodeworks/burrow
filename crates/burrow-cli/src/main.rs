@@ -10,6 +10,7 @@ use tracing_subscriber::EnvFilter;
 
 mod commandline;
 mod commands;
+mod compose;
 mod container;
 mod control;
 mod crash;
@@ -48,8 +49,12 @@ enum Command {
     /// Scaffold a `burrow.toml` and a project layout.
     Init {
         /// Start from a named template.
-        #[arg(long, value_name = "NAME")]
+        #[arg(long, value_name = "NAME", conflicts_with = "from")]
         template: Option<String>,
+
+        /// Convert a docker-compose.yml into burrow.toml.
+        #[arg(long, value_name = "PATH", conflicts_with = "template")]
+        from: Option<PathBuf>,
     },
 
     /// Start all services, or only the named services.
@@ -267,7 +272,7 @@ fn init_tracing(verbose: u8) {
 
 async fn run(command: Command, options: commands::Options) -> Result<()> {
     match command {
-        Command::Init { template } => crate::init::run(&options, template),
+        Command::Init { template, from } => crate::init::run(&options, template, from),
         Command::Up {
             services,
             detach,

@@ -113,3 +113,12 @@ clear test strategy, and does not weaken the trust model. Read
 - **Example seed variations.** Add a second seed script to one example that
   demonstrates `burrow restore` returning a changed table to its snapshot state,
   with the expected query output in the example README.
+- **Compose converter coverage.** Extend `crates/burrow-cli/src/compose.rs` with
+  support for one more common Compose construct (profiles, `extends`, or
+  `healthcheck.start_period`), with a fixture-based test in `compose.rs` and an
+  integration test in `crates/burrow-cli/tests/cli.rs`. Keep the parser
+  dependency-free and keep unsupported syntax as a clear error.
+- **Install script hardening.** Add an optional `-Version` smoke test to
+  `scripts/install.ps1` that runs `burrow --version` from the installed path and
+  prints a clear message when the user's PATH does not yet include the install
+  directory.
