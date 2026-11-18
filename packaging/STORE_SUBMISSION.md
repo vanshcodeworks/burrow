@@ -12,7 +12,7 @@ A human must open the upstream pull requests and push the Chocolatey package.
 Published hash (verified by downloading the asset):
 
 ```
-466813f2cef009a9000b0b4641872621cb2cc680851a6b20c7809575edaef480  burrow-v0.2.0-windows-x86_64.zip
+f33a6734a6ca42b09216ad6a6b146bf182b2448a67af13e15e51cee707233167  burrow-v0.2.0-windows-x86_64.zip
 ```
 
 ## winget (microsoft/winget-pkgs)

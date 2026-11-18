@@ -27,8 +27,8 @@ after the manifest is accepted upstream and an actual install succeeds.
 
 | File | SHA-256 |
 |------|---------|
-| `burrow-v0.2.0-windows-x86_64.zip` | `466813f2cef009a9000b0b4641872621cb2cc680851a6b20c7809575edaef480` |
-| `burrow-v0.2.0-windows-x86_64.cdx.json` (CycloneDX SBOM) | `75d139f1e0833fbed89b26dd989dfcda30b2e8dd5583685ece3d36cb62159432` |
+| `burrow-v0.2.0-windows-x86_64.zip` | `f33a6734a6ca42b09216ad6a6b146bf182b2448a67af13e15e51cee707233167` |
+| `burrow-v0.2.0-windows-x86_64.cdx.json` (CycloneDX SBOM) | `d3059b5958cc71c44e83f72a2308e362089ccac0e9795d6dc9741fc9fed98053` |
 
 Source of truth: `SHA256SUMS.txt` on the
 [v0.2.0 release](https://github.com/vanshcodeworks/burrow/releases/tag/v0.2.0).

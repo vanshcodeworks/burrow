@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 
 $packageName = 'burrow'
 $url64 = 'https://github.com/vanshcodeworks/burrow/releases/download/v0.1.0/burrow-v0.1.0-windows-x86_64.zip'
-$checksum64 = '466813f2cef009a9000b0b4641872621cb2cc680851a6b20c7809575edaef480'
+$checksum64 = 'f33a6734a6ca42b09216ad6a6b146bf182b2448a67af13e15e51cee707233167'
 $checksumType64 = 'sha256'
 # Draft manifest: url64/checksum64 match the published v0.1.0 GitHub Release asset.
 

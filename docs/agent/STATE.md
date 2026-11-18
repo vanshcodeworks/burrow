@@ -4,7 +4,9 @@
 
 Cycle 23 (post-audit truth pass). The `{{seed_file}}` bug is **fixed**: `build_package_plan` now identifies the seed step before the init loop and skips it there, with a regression test covering a configured seed file. Clippy `for_kv_map` and the dead `InstalledPackage.seed` field are removed. The four unverified packages (mongodb, redis, mysql, elasticsearch) are **removed** — their entries had the empty-string SHA-256 and could never install; the built-in registry is now postgres, nats, caddy only. README/docs/packaging now state one truth: source install and the GitHub Release zip are supported; winget/Scoop/Chocolatey/MSI are drafts; binaries are unsigned. A migration guide from Docker Compose was added.
 
-Next: run the full local gate, push, re-run the release workflow so the v0.2.0 GitHub Release actually exists, then copy the published asset's SHA-256 into every manifest. Human-only items remain: store submissions, Chocolatey API key, code signing, MSI build. The compatibility rows for Windows 10, ARM64, standard-user, OneDrive/UNC, FAT/exFAT, and antivirus are still unverified.
+Cycle 23 growth layer: one-line installer (`scripts/install.ps1`), `burrow init --from docker-compose.yml` converter, launch kit, examples and community docs. Version 0.2.0 was released and its published hashes were copied into every manifest and verified by downloading the assets.
+
+Human-only items remain: winget/Scoop PRs, Chocolatey API key, MSI build, code signing. The compatibility rows for Windows 10, ARM64, standard-user, OneDrive/UNC, FAT/exFAT, and antivirus are still unverified.
 
 The cycle 22 notes below are historical; they described the failures that have since been fixed.
 
